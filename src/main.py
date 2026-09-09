@@ -1,13 +1,14 @@
-"""PhysioAR main application — Phase 2.5.
+"""PhysioAR main application — Phase 3.
 
 Real-time webcam pose estimation pipeline with EMA smoothing,
-neutral-posture calibration, runtime recalibration, and
-temporary landmark debug overlay:
+neutral-posture calibration, runtime recalibration, exercise
+selection, and live angle display:
 
     Webcam → OpenCV Capture → BGR→RGB → MediaPipe Pose Landmarker
         → Raw Landmarks → EMA Smoothing → Smoothed Landmarks
         → Calibration (neutral posture baseline)
-        → Skeleton Visualization → OpenCV Window
+        → ExerciseDefinition.angle_calculator
+        → Live Angle Display + Skeleton Visualization → OpenCV Window
 
 Controls:
     D / d  — Toggle landmark debug overlay (Phase 2.5 diagnostic)
@@ -25,6 +26,7 @@ from src.acquisition import Camera
 from src.config import LANDMARK_VISIBILITY_THRESHOLD
 from src.pose_estimation import PoseEstimator
 from src.calibration import run_calibration
+from src.exercises import EXERCISE_REGISTRY, ExerciseDefinition
 from src.utils.geometry import calculate_midpoint
 
 
@@ -261,15 +263,132 @@ def _draw_unavailable_label(frame, label: str, frame_h: int,
 # ============================================================
 
 
-def main() -> None:
-    """Run the PhysioAR pipeline with calibration and recalibration.
+# ============================================================
+# Phase 3 — Exercise selection and live angle display
+# ============================================================
 
-    1. Opens the webcam and initializes pose estimation.
-    2. Runs initial neutral-posture calibration (~10 seconds).
-    3. Enters live pose visualization mode.
-    4. Press 'D' to toggle landmark debug overlay (Phase 2.5).
-    5. Press 'R' to recalibrate at any time.
-    6. Press 'Q' to exit.
+
+def select_exercise() -> ExerciseDefinition:
+    """Display a console menu and return the selected ExerciseDefinition.
+
+    Lists all exercises from EXERCISE_REGISTRY. The user selects by
+    number. Invalid input repeats the prompt.
+
+    Returns:
+        The selected ExerciseDefinition.
+    """
+    print()
+    print("=" * 50)
+    print("  PhysioAR — Exercise Selection")
+    print("=" * 50)
+    print()
+    print("  Available exercises:")
+    for i, ex in enumerate(EXERCISE_REGISTRY, start=1):
+        print(f"    {i}. {ex.name}")
+    print()
+
+    while True:
+        try:
+            choice = int(input("  Select exercise: "))
+            if 1 <= choice <= len(EXERCISE_REGISTRY):
+                return EXERCISE_REGISTRY[choice - 1]
+            print(f"  Please enter a number between 1 and {len(EXERCISE_REGISTRY)}.")
+        except ValueError:
+            print("  Please enter a valid number.")
+
+
+def select_side() -> str:
+    """Prompt the user to select left or right arm.
+
+    Returns:
+        ``"left"`` or ``"right"``.
+    """
+    print()
+    print("  Select arm:")
+    print("    1. Left arm")
+    print("    2. Right arm")
+    print()
+
+    while True:
+        try:
+            choice = int(input("  Select side: "))
+            if choice == 1:
+                return "left"
+            elif choice == 2:
+                return "right"
+            print("  Please enter 1 or 2.")
+        except ValueError:
+            print("  Please enter a valid number.")
+
+
+def display_camera_orientation(exercise: ExerciseDefinition) -> None:
+    """Print the required camera orientation for the selected exercise.
+
+    The orientation is derived from exercise.camera_orientation,
+    not hardcoded for any specific exercise.
+
+    Args:
+        exercise: The selected ExerciseDefinition.
+    """
+    orientation = exercise.camera_orientation.value.upper()
+    print()
+    print("=" * 50)
+    print(f"  Exercise: {exercise.name}")
+    print(f"  Camera: {orientation} VIEW REQUIRED")
+    print("=" * 50)
+    print()
+
+
+def _draw_angle_overlay(frame, exercise: ExerciseDefinition,
+                        angle: float | None, side: str) -> None:
+    """Draw the live exercise angle on the frame.
+
+    Args:
+        frame: The OpenCV BGR frame to draw on (modified in-place).
+        exercise: The active ExerciseDefinition.
+        angle: The calculated angle in degrees, or None if unavailable.
+        side: ``"left"`` or ``"right"``.
+    """
+    name_text = f"{exercise.name} ({side.capitalize()})"
+
+    if angle is not None:
+        angle_text = f"Angle: {angle:.1f}\xb0"
+        color = (0, 255, 0)  # Green when available.
+    else:
+        angle_text = "Angle: N/A"
+        color = (0, 100, 255)  # Orange when unavailable.
+
+    # Draw exercise name.
+    cv2.putText(
+        frame, name_text,
+        (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2,
+    )
+    # Draw angle value.
+    cv2.putText(
+        frame, angle_text,
+        (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2,
+    )
+
+
+# ============================================================
+# End Phase 3 code
+# ============================================================
+
+
+def main() -> None:
+    """Run the PhysioAR pipeline with exercise selection and live angle.
+
+    1. Prompts for exercise and arm-side selection.
+    2. Displays required camera orientation.
+    3. Opens the webcam and initializes pose estimation.
+    4. Runs initial neutral-posture calibration (~10 seconds).
+    5. Enters live pose visualization mode with live angle display.
+    6. Press 'D' to toggle landmark debug overlay (Phase 2.5).
+    7. Press 'R' to recalibrate at any time.
+    8. Press 'Q' to exit.
+
+    After exercise selection, downstream code uses only the
+    ExerciseDefinition interface — no exercise-name branching.
 
     Recalibration reuses the same Camera and PoseEstimator instances.
     It does NOT create a new camera, MediaPipe model, or EMA filter.
@@ -279,6 +398,11 @@ def main() -> None:
     If recalibration fails (insufficient valid samples), the previous
     calibration result is preserved and the application continues.
     """
+    # --- Phase 3: Exercise selection ---
+    exercise = select_exercise()
+    side = select_side()
+    display_camera_orientation(exercise)
+
     camera = Camera(camera_index=0)
     pose_estimator = PoseEstimator()
 
@@ -287,7 +411,7 @@ def main() -> None:
 
     try:
         camera.open()
-        print("PhysioAR — Phase 2.5: Landmark Debug Overlay")
+        print(f"PhysioAR — Phase 3: {exercise.name}")
         print("Press 'D' for debug overlay, 'R' to recalibrate, 'Q' to quit.")
         print()
 
@@ -309,6 +433,17 @@ def main() -> None:
 
             # Draw pose landmarks and connections if a pose was detected.
             pose_estimator.draw(frame, result)
+
+            # Phase 3 — compute exercise angle using the definition's
+            # angle_calculator. No exercise-specific branching here.
+            angle = None
+            if result.pose_detected:
+                angle = exercise.angle_calculator(
+                    result.smoothed_landmarks, side,
+                )
+
+            # Phase 3 — draw live angle overlay.
+            _draw_angle_overlay(frame, exercise, angle, side)
 
             # Phase 2.5 diagnostic — draw debug overlay if enabled.
             if debug_overlay_enabled and result.pose_detected:
