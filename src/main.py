@@ -1,4 +1,4 @@
-"""PhysioAR main application — Phase 3.
+"""PhysioAR main application — Phase 4A.
 
 Real-time webcam pose estimation pipeline with EMA smoothing,
 neutral-posture calibration, runtime recalibration, exercise
@@ -27,6 +27,7 @@ from src.config import LANDMARK_VISIBILITY_THRESHOLD
 from src.pose_estimation import PoseEstimator
 from src.calibration import run_calibration
 from src.exercises import EXERCISE_REGISTRY, ExerciseDefinition
+from src.metrics.posture import compute_posture_metrics, PostureMetrics
 from src.utils.geometry import calculate_midpoint
 
 
@@ -375,6 +376,89 @@ def _draw_angle_overlay(frame, exercise: ExerciseDefinition,
 # ============================================================
 
 
+# ============================================================
+# Phase 4A — Raw posture metrics display
+# ============================================================
+
+
+def _draw_posture_metrics_overlay(
+    frame, metrics: PostureMetrics,
+) -> None:
+    """Draw raw posture metrics on the frame.
+
+    Phase 4A — compute only, no thresholds/flags/feedback.
+
+    Displays three raw values in the top-right area:
+        Torso Lean: X.X° or N/A
+        Shoulder Height Diff: X.XXX or N/A
+        Neck Tilt: X.X° or N/A
+
+    Args:
+        frame: The OpenCV BGR frame to draw on (modified in-place).
+        metrics: PostureMetrics from compute_posture_metrics().
+    """
+    h, w = frame.shape[:2]
+
+    # Position: right side of frame, below the debug indicator area.
+    base_x = w - 280
+    base_y = 60
+    line_height = 25
+    color_available = (200, 200, 200)  # Light grey for raw values.
+    color_unavailable = (0, 100, 255)  # Orange for N/A.
+    color_header = (180, 180, 180)
+
+    # Header.
+    cv2.putText(
+        frame, "RAW POSTURE METRICS",
+        (base_x, base_y),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color_header, 1,
+    )
+
+    # Torso lean.
+    if metrics.torso_lean is not None:
+        text = f"Torso Lean: {metrics.torso_lean:.1f}\xb0"
+        color = color_available
+    else:
+        text = "Torso Lean: N/A"
+        color = color_unavailable
+    cv2.putText(
+        frame, text,
+        (base_x, base_y + line_height),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1,
+    )
+
+    # Shoulder height difference.
+    if metrics.shoulder_height_difference is not None:
+        text = f"Shoulder Height Diff: {metrics.shoulder_height_difference:.3f}"
+        color = color_available
+    else:
+        text = "Shoulder Height Diff: N/A"
+        color = color_unavailable
+    cv2.putText(
+        frame, text,
+        (base_x, base_y + 2 * line_height),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1,
+    )
+
+    # Neck tilt.
+    if metrics.neck_tilt is not None:
+        text = f"Neck Tilt: {metrics.neck_tilt:.1f}\xb0"
+        color = color_available
+    else:
+        text = "Neck Tilt: N/A"
+        color = color_unavailable
+    cv2.putText(
+        frame, text,
+        (base_x, base_y + 3 * line_height),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1,
+    )
+
+
+# ============================================================
+# End Phase 4A code
+# ============================================================
+
+
 def main() -> None:
     """Run the PhysioAR pipeline with exercise selection and live angle.
 
@@ -444,6 +528,19 @@ def main() -> None:
 
             # Phase 3 — draw live angle overlay.
             _draw_angle_overlay(frame, exercise, angle, side)
+
+            # Phase 4A — compute and display raw posture metrics.
+            if result.pose_detected:
+                posture = compute_posture_metrics(
+                    result.smoothed_landmarks,
+                )
+            else:
+                posture = PostureMetrics(
+                    torso_lean=None,
+                    shoulder_height_difference=None,
+                    neck_tilt=None,
+                )
+            _draw_posture_metrics_overlay(frame, posture)
 
             # Phase 2.5 diagnostic — draw debug overlay if enabled.
             if debug_overlay_enabled and result.pose_detected:
