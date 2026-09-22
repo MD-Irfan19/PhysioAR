@@ -1,4 +1,4 @@
-"""PhysioAR main application — Phase 4A.
+"""PhysioAR main application — Phase 4B.
 
 Real-time webcam pose estimation pipeline with EMA smoothing,
 neutral-posture calibration, runtime recalibration, exercise
@@ -28,6 +28,7 @@ from src.pose_estimation import PoseEstimator
 from src.calibration import run_calibration
 from src.exercises import EXERCISE_REGISTRY, ExerciseDefinition
 from src.metrics.posture import compute_posture_metrics, PostureMetrics
+from src.compensation import evaluate_compensation, CompensationResult
 from src.utils.geometry import calculate_midpoint
 
 
@@ -459,6 +460,80 @@ def _draw_posture_metrics_overlay(
 # ============================================================
 
 
+# ============================================================
+# Phase 4B — Compensation flags display
+# ============================================================
+
+
+def _draw_compensation_overlay(
+    frame, comp: CompensationResult | None,
+) -> None:
+    """Draw compensation flag status on the frame.
+
+    Phase 4B — threshold-based flagging only, no feedback.
+
+    Displays below the raw posture metrics area.
+
+    Args:
+        frame: The OpenCV BGR frame to draw on (modified in-place).
+        comp: CompensationResult, or None if baseline unavailable.
+    """
+    h, w = frame.shape[:2]
+
+    base_x = w - 280
+    base_y = 185  # Below the raw posture metrics block.
+    line_height = 22
+    color_header = (180, 180, 180)
+    color_clear = (0, 200, 0)       # Green for CLEAR.
+    color_flagged = (0, 0, 255)     # Red for FLAGGED.
+    color_na = (0, 100, 255)        # Orange for N/A.
+
+    # Header.
+    cv2.putText(
+        frame, "COMPENSATION FLAGS",
+        (base_x, base_y),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color_header, 1,
+    )
+
+    if comp is None:
+        cv2.putText(
+            frame, "No baseline available",
+            (base_x, base_y + line_height),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.40, color_na, 1,
+        )
+        return
+
+    # Draw each metric flag.
+    metrics = [
+        ("Torso Lean", comp.torso_lean),
+        ("Shoulder Hike", comp.shoulder_hike),
+        ("Neck Tilt", comp.neck_tilt),
+    ]
+    for i, (label, result) in enumerate(metrics):
+        y_pos = base_y + (i + 1) * line_height
+
+        if result.current_value is None:
+            text = f"{label}: N/A"
+            color = color_na
+        elif result.flagged:
+            text = f"{label}: FLAGGED"
+            color = color_flagged
+        else:
+            text = f"{label}: CLEAR"
+            color = color_clear
+
+        cv2.putText(
+            frame, text,
+            (base_x, y_pos),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1,
+        )
+
+
+# ============================================================
+# End Phase 4B code
+# ============================================================
+
+
 def main() -> None:
     """Run the PhysioAR pipeline with exercise selection and live angle.
 
@@ -541,6 +616,10 @@ def main() -> None:
                     neck_tilt=None,
                 )
             _draw_posture_metrics_overlay(frame, posture)
+
+            # Phase 4B — evaluate and display compensation flags.
+            comp = evaluate_compensation(posture, calibration_result)
+            _draw_compensation_overlay(frame, comp)
 
             # Phase 2.5 diagnostic — draw debug overlay if enabled.
             if debug_overlay_enabled and result.pose_detected:
