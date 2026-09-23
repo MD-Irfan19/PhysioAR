@@ -1,4 +1,4 @@
-"""PhysioAR main application — Phase 4B.
+"""PhysioAR main application — Phase 5.
 
 Real-time webcam pose estimation pipeline with EMA smoothing,
 neutral-posture calibration, runtime recalibration, exercise
@@ -29,6 +29,7 @@ from src.calibration import run_calibration
 from src.exercises import EXERCISE_REGISTRY, ExerciseDefinition
 from src.metrics.posture import compute_posture_metrics, PostureMetrics
 from src.compensation import evaluate_compensation, CompensationResult
+from src.rep_detection import RepDetector, RepState
 from src.utils.geometry import calculate_midpoint
 
 
@@ -534,6 +535,41 @@ def _draw_compensation_overlay(
 # ============================================================
 
 
+# ============================================================
+# Phase 5 — Rep detection display
+# ============================================================
+
+
+def _draw_rep_overlay(
+    frame, detector: RepDetector,
+) -> None:
+    """Draw rep count and state on the frame.
+
+    Phase 5 — rep detection display only, no scoring/feedback.
+
+    Args:
+        frame: The OpenCV BGR frame to draw on (modified in-place).
+        detector: The active RepDetector instance.
+    """
+    # Position: left side, below the exercise angle.
+    count_text = f"REP COUNT: {detector.rep_count}"
+    state_text = f"REP STATE: {detector.state.value.upper()}"
+
+    cv2.putText(
+        frame, count_text,
+        (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2,
+    )
+    cv2.putText(
+        frame, state_text,
+        (10, 145), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1,
+    )
+
+
+# ============================================================
+# End Phase 5 code
+# ============================================================
+
+
 def main() -> None:
     """Run the PhysioAR pipeline with exercise selection and live angle.
 
@@ -567,6 +603,10 @@ def main() -> None:
 
     # Phase 2.5 diagnostic — debug overlay state (OFF by default).
     debug_overlay_enabled = False
+
+    # Phase 5 — rep detection.
+    rep_detector = RepDetector(exercise)
+    frame_index = 0
 
     try:
         camera.open()
@@ -603,6 +643,24 @@ def main() -> None:
 
             # Phase 3 — draw live angle overlay.
             _draw_angle_overlay(frame, exercise, angle, side)
+
+            # Phase 5 — update rep detector with current angle.
+            rep_event = rep_detector.update(
+                angle, frame_index=frame_index,
+            )
+            if rep_event is not None:
+                print(f"  REP {rep_event.rep_number} COMPLETE")
+                if rep_event.start_frame is not None:
+                    print(f"    Start frame: {rep_event.start_frame}")
+                if rep_event.top_frame is not None:
+                    print(f"    Top frame:   {rep_event.top_frame}")
+                if rep_event.end_frame is not None:
+                    print(f"    End frame:   {rep_event.end_frame}")
+
+            # Phase 5 — draw rep overlay.
+            _draw_rep_overlay(frame, rep_detector)
+
+            frame_index += 1
 
             # Phase 4A — compute and display raw posture metrics.
             if result.pose_detected:
@@ -650,6 +708,9 @@ def main() -> None:
                 new_result = _attempt_calibration(camera, pose_estimator)
                 if new_result is not None:
                     calibration_result = new_result
+                    # Phase 5 — reset rep detector on successful recalibration.
+                    rep_detector.reset()
+                    print("  Rep detector reset.")
                 else:
                     print("Previous calibration preserved.")
 
