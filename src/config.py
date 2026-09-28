@@ -72,3 +72,47 @@ LANDMARK_VISIBILITY_THRESHOLD = 0.5
 TORSO_LEAN_FLOOR = 5
 SHOULDER_HIKE_FLOOR = 3
 NECK_TILT_FLOOR = 5
+
+# ============================================================
+# Movement Quality Scoring (Phase 6)
+# ============================================================
+
+# Alignment normalization constant.
+# Used in: Alignment = max(0, 100 - (avg_deviation / constant) * 100)
+#
+# The "average deviation" is the mean of absolute posture deviations
+# across all three metrics (torso lean, shoulder height diff, neck tilt)
+# during a completed rep. Each metric is individually normalized to
+# [0, 1] before averaging to handle different units:
+#   - torso_lean deviation / ALIGNMENT_NORMALIZATION_CONSTANT (degrees)
+#   - shoulder_height_diff deviation / ALIGNMENT_NORMALIZATION_CONSTANT (degrees)
+#     (shoulder height diff is scaled by 100 to approximate degree-like units)
+#   - neck_tilt deviation / ALIGNMENT_NORMALIZATION_CONSTANT (degrees)
+#
+# Units: degrees (or degree-equivalent after unit scaling).
+#
+# Initial placeholder value. NOT experimentally validated.
+# Intended to be tuned during MVP validation.
+ALIGNMENT_NORMALIZATION_CONSTANT = 15.0
+
+# Stability normalization constant.
+# Used in: Stability = max(0, 100 - (angle_stddev / constant) * 100)
+#
+# Units: degrees (standard deviation of the tracked exercise angle).
+#
+# Initial placeholder value. NOT experimentally validated.
+# Intended to be tuned during MVP validation.
+STABILITY_NORMALIZATION_CONSTANT = 30.0
+
+# Compensation penalty per distinct flagged compensation type.
+# Used in: Compensation Score = max(0, 100 - count * penalty)
+#
+# One penalty is applied per DISTINCT compensation type flagged
+# at least once during the completed repetition:
+#   0 flagged types → 100
+#   1 flagged type  → 85
+#   2 flagged types → 70
+#   3 flagged types → 55
+#
+# Units: score points (out of 100).
+COMPENSATION_PENALTY = 15

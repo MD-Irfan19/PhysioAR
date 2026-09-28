@@ -1,4 +1,4 @@
-"""PhysioAR main application — Phase 5.
+"""PhysioAR main application — Phase 6.
 
 Real-time webcam pose estimation pipeline with EMA smoothing,
 neutral-posture calibration, runtime recalibration, exercise
@@ -20,6 +20,8 @@ Run from the project root:
     python -m src.main
 """
 
+from collections import deque
+
 import cv2
 
 from src.acquisition import Camera
@@ -30,6 +32,11 @@ from src.exercises import EXERCISE_REGISTRY, ExerciseDefinition
 from src.metrics.posture import compute_posture_metrics, PostureMetrics
 from src.compensation import evaluate_compensation, CompensationResult
 from src.rep_detection import RepDetector, RepState
+from src.quality import (
+    FrameSample,
+    QualityResult,
+    evaluate_rep_quality,
+)
 from src.utils.geometry import calculate_midpoint
 
 
@@ -570,6 +577,63 @@ def _draw_rep_overlay(
 # ============================================================
 
 
+# ============================================================
+# Phase 6 — Quality display
+# ============================================================
+
+# Maximum frame history buffer size.
+_FRAME_HISTORY_MAX = 600
+
+
+def _draw_quality_overlay(
+    frame, quality: QualityResult | None,
+) -> None:
+    """Draw last rep quality scores on the frame.
+
+    Phase 6 — quality display only, no feedback.
+
+    Args:
+        frame: The OpenCV BGR frame to draw on (modified in-place).
+        quality: QualityResult of the last completed rep, or None.
+    """
+    if quality is None:
+        return
+
+    base_x = 10
+    base_y = 175
+    line_height = 20
+    color_label = (180, 180, 180)
+    color_score = (0, 255, 200)
+
+    cv2.putText(
+        frame, f"LAST REP (#{quality.rep_number})",
+        (base_x, base_y),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color_label, 1,
+    )
+
+    scores = [
+        ("ROM", quality.rom_score),
+        ("ALIGN", quality.alignment_score),
+        ("STAB", quality.stability_score),
+        ("COMP", quality.compensation_score),
+        ("QUALITY", quality.overall_score),
+    ]
+    for i, (label, score) in enumerate(scores):
+        y_pos = base_y + (i + 1) * line_height
+        text = f"{label}: {score:.1f}"
+        color = color_score if label != "QUALITY" else (0, 255, 255)
+        cv2.putText(
+            frame, text,
+            (base_x, y_pos),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.42, color, 1,
+        )
+
+
+# ============================================================
+# End Phase 6 code
+# ============================================================
+
+
 def main() -> None:
     """Run the PhysioAR pipeline with exercise selection and live angle.
 
@@ -608,6 +672,10 @@ def main() -> None:
     rep_detector = RepDetector(exercise)
     frame_index = 0
 
+    # Phase 6 — frame history and quality tracking.
+    frame_history: deque[FrameSample] = deque(maxlen=_FRAME_HISTORY_MAX)
+    last_quality: QualityResult | None = None
+
     try:
         camera.open()
         print(f"PhysioAR — Phase 3: {exercise.name}")
@@ -644,24 +712,6 @@ def main() -> None:
             # Phase 3 — draw live angle overlay.
             _draw_angle_overlay(frame, exercise, angle, side)
 
-            # Phase 5 — update rep detector with current angle.
-            rep_event = rep_detector.update(
-                angle, frame_index=frame_index,
-            )
-            if rep_event is not None:
-                print(f"  REP {rep_event.rep_number} COMPLETE")
-                if rep_event.start_frame is not None:
-                    print(f"    Start frame: {rep_event.start_frame}")
-                if rep_event.top_frame is not None:
-                    print(f"    Top frame:   {rep_event.top_frame}")
-                if rep_event.end_frame is not None:
-                    print(f"    End frame:   {rep_event.end_frame}")
-
-            # Phase 5 — draw rep overlay.
-            _draw_rep_overlay(frame, rep_detector)
-
-            frame_index += 1
-
             # Phase 4A — compute and display raw posture metrics.
             if result.pose_detected:
                 posture = compute_posture_metrics(
@@ -678,6 +728,70 @@ def main() -> None:
             # Phase 4B — evaluate and display compensation flags.
             comp = evaluate_compensation(posture, calibration_result)
             _draw_compensation_overlay(frame, comp)
+
+            # Phase 6 — record frame sample for quality scoring.
+            sample = FrameSample(
+                frame_index=frame_index,
+                angle=angle,
+                torso_lean=posture.torso_lean,
+                shoulder_height_diff=posture.shoulder_height_difference,
+                neck_tilt=posture.neck_tilt,
+                torso_lean_flagged=(
+                    comp.torso_lean.flagged if comp is not None else False
+                ),
+                shoulder_hike_flagged=(
+                    comp.shoulder_hike.flagged if comp is not None else False
+                ),
+                neck_tilt_flagged=(
+                    comp.neck_tilt.flagged if comp is not None else False
+                ),
+                torso_deviation=(
+                    comp.torso_lean.deviation if comp is not None else None
+                ),
+                shoulder_deviation=(
+                    comp.shoulder_hike.deviation if comp is not None else None
+                ),
+                neck_deviation=(
+                    comp.neck_tilt.deviation if comp is not None else None
+                ),
+            )
+            frame_history.append(sample)
+
+            # Phase 5 — update rep detector with current angle.
+            rep_event = rep_detector.update(
+                angle, frame_index=frame_index,
+            )
+            if rep_event is not None:
+                # Phase 6 — evaluate quality for the completed rep.
+                last_quality = evaluate_rep_quality(
+                    rep_number=rep_event.rep_number,
+                    frame_history=list(frame_history),
+                    start_frame=rep_event.start_frame,
+                    top_frame=rep_event.top_frame,
+                    end_frame=rep_event.end_frame,
+                    target_rom=exercise.rom_target,
+                )
+                print(f"  REP {rep_event.rep_number} COMPLETE")
+                if rep_event.start_frame is not None:
+                    print(f"    Start frame: {rep_event.start_frame}")
+                if rep_event.top_frame is not None:
+                    print(f"    Top frame:   {rep_event.top_frame}")
+                if rep_event.end_frame is not None:
+                    print(f"    End frame:   {rep_event.end_frame}")
+                print(f"    Quality:")
+                print(f"      ROM:          {last_quality.rom_score:.1f}")
+                print(f"      Alignment:    {last_quality.alignment_score:.1f}")
+                print(f"      Stability:    {last_quality.stability_score:.1f}")
+                print(f"      Compensation: {last_quality.compensation_score:.1f}")
+                print(f"      Overall:      {last_quality.overall_score:.1f}")
+
+            # Phase 5 — draw rep overlay.
+            _draw_rep_overlay(frame, rep_detector)
+
+            # Phase 6 — draw quality overlay.
+            _draw_quality_overlay(frame, last_quality)
+
+            frame_index += 1
 
             # Phase 2.5 diagnostic — draw debug overlay if enabled.
             if debug_overlay_enabled and result.pose_detected:
@@ -710,7 +824,10 @@ def main() -> None:
                     calibration_result = new_result
                     # Phase 5 — reset rep detector on successful recalibration.
                     rep_detector.reset()
-                    print("  Rep detector reset.")
+                    # Phase 6 — clear frame history and quality on recalibration.
+                    frame_history.clear()
+                    last_quality = None
+                    print("  Rep detector reset. Quality history cleared.")
                 else:
                     print("Previous calibration preserved.")
 
