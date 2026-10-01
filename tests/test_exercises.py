@@ -183,8 +183,14 @@ class TestShoulderAbductionDefinition:
     def test_compensation_checks_empty(self):
         assert SHOULDER_ABDUCTION.compensation_checks == []
 
-    def test_feedback_templates_empty(self):
-        assert SHOULDER_ABDUCTION.feedback_templates == {}
+    def test_feedback_templates_populated(self):
+        """Phase 7: templates are now populated with compensation types."""
+        templates = SHOULDER_ABDUCTION.feedback_templates
+        assert "torso_lean" in templates
+        assert "shoulder_hike" in templates
+        assert "neck_tilt" in templates
+        for template in templates.values():
+            assert "{value}" in template
 
     def test_expected_landmarks(self):
         expected = SHOULDER_ABDUCTION.expected_landmarks

@@ -1,4 +1,4 @@
-"""PhysioAR main application — Phase 6.
+"""PhysioAR main application — Phase 7.
 
 Real-time webcam pose estimation pipeline with EMA smoothing,
 neutral-posture calibration, runtime recalibration, exercise
@@ -37,6 +37,7 @@ from src.quality import (
     QualityResult,
     evaluate_rep_quality,
 )
+from src.feedback import generate_all_feedback
 from src.utils.geometry import calculate_midpoint
 
 
@@ -634,6 +635,44 @@ def _draw_quality_overlay(
 # ============================================================
 
 
+# ============================================================
+# Phase 7 — Feedback display
+# ============================================================
+
+
+def _draw_feedback_overlay(
+    frame, messages: list[str],
+) -> None:
+    """Draw active corrective feedback messages on the frame.
+
+    Phase 7 — feedback display only.
+
+    Args:
+        frame: The OpenCV BGR frame to draw on (modified in-place).
+        messages: List of feedback message strings to display.
+    """
+    if not messages:
+        return
+
+    h = frame.shape[0]
+    base_x = 10
+    base_y = h - 20 * len(messages) - 10
+    color = (0, 180, 255)  # Orange.
+
+    for i, msg in enumerate(messages):
+        y_pos = base_y + i * 20
+        cv2.putText(
+            frame, msg,
+            (base_x, y_pos),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.40, color, 1,
+        )
+
+
+# ============================================================
+# End Phase 7 code
+# ============================================================
+
+
 def main() -> None:
     """Run the PhysioAR pipeline with exercise selection and live angle.
 
@@ -675,6 +714,10 @@ def main() -> None:
     # Phase 6 — frame history and quality tracking.
     frame_history: deque[FrameSample] = deque(maxlen=_FRAME_HISTORY_MAX)
     last_quality: QualityResult | None = None
+
+    # Phase 7 — feedback tracking.
+    active_feedback: list[str] = []
+    prev_flagged: set[str] = set()
 
     try:
         camera.open()
@@ -728,6 +771,40 @@ def main() -> None:
             # Phase 4B — evaluate and display compensation flags.
             comp = evaluate_compensation(posture, calibration_result)
             _draw_compensation_overlay(frame, comp)
+
+            # Phase 7 — generate corrective feedback for flagged compensations.
+            # Only print new feedback when the set of flagged types changes
+            # to avoid per-frame spam.
+            current_flagged: set[str] = set()
+            if comp is not None:
+                if comp.torso_lean.flagged:
+                    current_flagged.add("torso_lean")
+                if comp.shoulder_hike.flagged:
+                    current_flagged.add("shoulder_hike")
+                if comp.neck_tilt.flagged:
+                    current_flagged.add("neck_tilt")
+
+            if current_flagged != prev_flagged:
+                active_feedback = generate_all_feedback(exercise, comp)
+                # Print only newly appearing compensations.
+                newly_flagged = current_flagged - prev_flagged
+                if newly_flagged:
+                    new_msgs = []
+                    for comp_type in sorted(newly_flagged):
+                        if comp is not None:
+                            from src.feedback import generate_feedback
+                            metric = getattr(comp, comp_type, None)
+                            if metric and metric.deviation is not None:
+                                msg = generate_feedback(
+                                    exercise, comp_type, metric.deviation,
+                                )
+                                if msg:
+                                    new_msgs.append(msg)
+                    for msg in new_msgs:
+                        print(f"  FEEDBACK: {msg}")
+                prev_flagged = current_flagged
+            elif not current_flagged:
+                active_feedback = []
 
             # Phase 6 — record frame sample for quality scoring.
             sample = FrameSample(
@@ -791,6 +868,9 @@ def main() -> None:
             # Phase 6 — draw quality overlay.
             _draw_quality_overlay(frame, last_quality)
 
+            # Phase 7 — draw feedback overlay.
+            _draw_feedback_overlay(frame, active_feedback)
+
             frame_index += 1
 
             # Phase 2.5 diagnostic — draw debug overlay if enabled.
@@ -827,7 +907,10 @@ def main() -> None:
                     # Phase 6 — clear frame history and quality on recalibration.
                     frame_history.clear()
                     last_quality = None
-                    print("  Rep detector reset. Quality history cleared.")
+                    # Phase 7 — clear feedback on recalibration.
+                    active_feedback = []
+                    prev_flagged = set()
+                    print("  Rep detector reset. Quality/feedback cleared.")
                 else:
                     print("Previous calibration preserved.")
 

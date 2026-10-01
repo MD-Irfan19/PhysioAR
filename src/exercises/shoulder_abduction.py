@@ -151,7 +151,20 @@ SHOULDER_ABDUCTION = ExerciseDefinition(
     rep_end_angle=80.0,
     angle_calculator=calculate_shoulder_abduction_angle,
     compensation_checks=[],
-    feedback_templates={},
+    feedback_templates={
+        "torso_lean": (
+            "Torso Lean = {value} — reduce torso lean to maintain"
+            " shoulder isolation."
+        ),
+        "shoulder_hike": (
+            "Shoulder Hike = {value} — keep the shoulder relaxed"
+            " and avoid elevating it during abduction."
+        ),
+        "neck_tilt": (
+            "Neck Tilt = {value} — keep your head and neck aligned"
+            " with your torso."
+        ),
+    },
     expected_landmarks=[
         "left_shoulder", "left_elbow", "left_wrist",
         "right_shoulder", "right_elbow", "right_wrist",
