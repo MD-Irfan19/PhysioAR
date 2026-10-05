@@ -1,4 +1,4 @@
-"""PhysioAR main application — Phase 7.
+"""PhysioAR main application — Phase 8.
 
 Real-time webcam pose estimation pipeline with EMA smoothing,
 neutral-posture calibration, runtime recalibration, exercise
@@ -39,6 +39,7 @@ from src.quality import (
 )
 from src.feedback import generate_all_feedback
 from src.utils.geometry import calculate_midpoint
+from src.overlay import draw_hud
 
 
 # ============================================================
@@ -275,402 +276,48 @@ def _draw_unavailable_label(frame, label: str, frame_h: int,
 
 
 # ============================================================
-# Phase 3 — Exercise selection and live angle display
+# Phase 3 — Exercise selection
 # ============================================================
 
-
 def select_exercise() -> ExerciseDefinition:
-    """Display a console menu and return the selected ExerciseDefinition.
-
-    Lists all exercises from EXERCISE_REGISTRY. The user selects by
-    number. Invalid input repeats the prompt.
-
-    Returns:
-        The selected ExerciseDefinition.
-    """
-    print()
-    print("=" * 50)
-    print("  PhysioAR — Exercise Selection")
-    print("=" * 50)
-    print()
-    print("  Available exercises:")
-    for i, ex in enumerate(EXERCISE_REGISTRY, start=1):
-        print(f"    {i}. {ex.name}")
-    print()
-
+    """Prompt the user to select an exercise from the registry."""
+    print("Available Exercises:")
+    for idx, ex in enumerate(EXERCISE_REGISTRY):
+        print(f"  {idx + 1}. {ex.name}")
+    
     while True:
         try:
-            choice = int(input("  Select exercise: "))
-            if 1 <= choice <= len(EXERCISE_REGISTRY):
-                return EXERCISE_REGISTRY[choice - 1]
-            print(f"  Please enter a number between 1 and {len(EXERCISE_REGISTRY)}.")
+            choice = int(input("Select an exercise by number: ")) - 1
+            if 0 <= choice < len(EXERCISE_REGISTRY):
+                return EXERCISE_REGISTRY[choice]
+            else:
+                print("Invalid choice. Please select a valid number.")
         except ValueError:
-            print("  Please enter a valid number.")
+            print("Invalid input. Please enter a number.")
 
 
 def select_side() -> str:
-    """Prompt the user to select left or right arm.
-
-    Returns:
-        ``"left"`` or ``"right"``.
-    """
-    print()
-    print("  Select arm:")
-    print("    1. Left arm")
-    print("    2. Right arm")
-    print()
-
+    """Prompt the user to select the active side (left or right)."""
     while True:
-        try:
-            choice = int(input("  Select side: "))
-            if choice == 1:
-                return "left"
-            elif choice == 2:
-                return "right"
-            print("  Please enter 1 or 2.")
-        except ValueError:
-            print("  Please enter a valid number.")
+        choice = input("Select side to track (L/R): ").strip().lower()
+        if choice in ('l', 'left'):
+            return 'left'
+        elif choice in ('r', 'right'):
+            return 'right'
+        else:
+            print("Invalid input. Please enter 'L' or 'R'.")
 
 
 def display_camera_orientation(exercise: ExerciseDefinition) -> None:
-    """Print the required camera orientation for the selected exercise.
+    """Display the required camera orientation for the selected exercise."""
+    print("\n" + "="*40)
+    print(f"Required Camera Orientation for {exercise.name}:")
+    print(f"  --> {exercise.camera_orientation.name.upper()} VIEW <--")
+    print("="*40 + "\n")
 
-    The orientation is derived from exercise.camera_orientation,
-    not hardcoded for any specific exercise.
-
-    Args:
-        exercise: The selected ExerciseDefinition.
-    """
-    orientation = exercise.camera_orientation.value.upper()
-    print()
-    print("=" * 50)
-    print(f"  Exercise: {exercise.name}")
-    print(f"  Camera: {orientation} VIEW REQUIRED")
-    print("=" * 50)
-    print()
-
-
-def _draw_angle_overlay(frame, exercise: ExerciseDefinition,
-                        angle: float | None, side: str) -> None:
-    """Draw the live exercise angle on the frame.
-
-    Args:
-        frame: The OpenCV BGR frame to draw on (modified in-place).
-        exercise: The active ExerciseDefinition.
-        angle: The calculated angle in degrees, or None if unavailable.
-        side: ``"left"`` or ``"right"``.
-    """
-    name_text = f"{exercise.name} ({side.capitalize()})"
-
-    if angle is not None:
-        angle_text = f"Angle: {angle:.1f}\xb0"
-        color = (0, 255, 0)  # Green when available.
-    else:
-        angle_text = "Angle: N/A"
-        color = (0, 100, 255)  # Orange when unavailable.
-
-    # Draw exercise name.
-    cv2.putText(
-        frame, name_text,
-        (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2,
-    )
-    # Draw angle value.
-    cv2.putText(
-        frame, angle_text,
-        (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2,
-    )
-
-
-# ============================================================
-# End Phase 3 code
-# ============================================================
-
-
-# ============================================================
-# Phase 4A — Raw posture metrics display
-# ============================================================
-
-
-def _draw_posture_metrics_overlay(
-    frame, metrics: PostureMetrics,
-) -> None:
-    """Draw raw posture metrics on the frame.
-
-    Phase 4A — compute only, no thresholds/flags/feedback.
-
-    Displays three raw values in the top-right area:
-        Torso Lean: X.X° or N/A
-        Shoulder Height Diff: X.XXX or N/A
-        Neck Tilt: X.X° or N/A
-
-    Args:
-        frame: The OpenCV BGR frame to draw on (modified in-place).
-        metrics: PostureMetrics from compute_posture_metrics().
-    """
-    h, w = frame.shape[:2]
-
-    # Position: right side of frame, below the debug indicator area.
-    base_x = w - 280
-    base_y = 60
-    line_height = 25
-    color_available = (200, 200, 200)  # Light grey for raw values.
-    color_unavailable = (0, 100, 255)  # Orange for N/A.
-    color_header = (180, 180, 180)
-
-    # Header.
-    cv2.putText(
-        frame, "RAW POSTURE METRICS",
-        (base_x, base_y),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color_header, 1,
-    )
-
-    # Torso lean.
-    if metrics.torso_lean is not None:
-        text = f"Torso Lean: {metrics.torso_lean:.1f}\xb0"
-        color = color_available
-    else:
-        text = "Torso Lean: N/A"
-        color = color_unavailable
-    cv2.putText(
-        frame, text,
-        (base_x, base_y + line_height),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1,
-    )
-
-    # Shoulder height difference.
-    if metrics.shoulder_height_difference is not None:
-        text = f"Shoulder Height Diff: {metrics.shoulder_height_difference:.3f}"
-        color = color_available
-    else:
-        text = "Shoulder Height Diff: N/A"
-        color = color_unavailable
-    cv2.putText(
-        frame, text,
-        (base_x, base_y + 2 * line_height),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1,
-    )
-
-    # Neck tilt.
-    if metrics.neck_tilt is not None:
-        text = f"Neck Tilt: {metrics.neck_tilt:.1f}\xb0"
-        color = color_available
-    else:
-        text = "Neck Tilt: N/A"
-        color = color_unavailable
-    cv2.putText(
-        frame, text,
-        (base_x, base_y + 3 * line_height),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1,
-    )
-
-
-# ============================================================
-# End Phase 4A code
-# ============================================================
-
-
-# ============================================================
-# Phase 4B — Compensation flags display
-# ============================================================
-
-
-def _draw_compensation_overlay(
-    frame, comp: CompensationResult | None,
-) -> None:
-    """Draw compensation flag status on the frame.
-
-    Phase 4B — threshold-based flagging only, no feedback.
-
-    Displays below the raw posture metrics area.
-
-    Args:
-        frame: The OpenCV BGR frame to draw on (modified in-place).
-        comp: CompensationResult, or None if baseline unavailable.
-    """
-    h, w = frame.shape[:2]
-
-    base_x = w - 280
-    base_y = 185  # Below the raw posture metrics block.
-    line_height = 22
-    color_header = (180, 180, 180)
-    color_clear = (0, 200, 0)       # Green for CLEAR.
-    color_flagged = (0, 0, 255)     # Red for FLAGGED.
-    color_na = (0, 100, 255)        # Orange for N/A.
-
-    # Header.
-    cv2.putText(
-        frame, "COMPENSATION FLAGS",
-        (base_x, base_y),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color_header, 1,
-    )
-
-    if comp is None:
-        cv2.putText(
-            frame, "No baseline available",
-            (base_x, base_y + line_height),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.40, color_na, 1,
-        )
-        return
-
-    # Draw each metric flag.
-    metrics = [
-        ("Torso Lean", comp.torso_lean),
-        ("Shoulder Hike", comp.shoulder_hike),
-        ("Neck Tilt", comp.neck_tilt),
-    ]
-    for i, (label, result) in enumerate(metrics):
-        y_pos = base_y + (i + 1) * line_height
-
-        if result.current_value is None:
-            text = f"{label}: N/A"
-            color = color_na
-        elif result.flagged:
-            text = f"{label}: FLAGGED"
-            color = color_flagged
-        else:
-            text = f"{label}: CLEAR"
-            color = color_clear
-
-        cv2.putText(
-            frame, text,
-            (base_x, y_pos),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1,
-        )
-
-
-# ============================================================
-# End Phase 4B code
-# ============================================================
-
-
-# ============================================================
-# Phase 5 — Rep detection display
-# ============================================================
-
-
-def _draw_rep_overlay(
-    frame, detector: RepDetector,
-) -> None:
-    """Draw rep count and state on the frame.
-
-    Phase 5 — rep detection display only, no scoring/feedback.
-
-    Args:
-        frame: The OpenCV BGR frame to draw on (modified in-place).
-        detector: The active RepDetector instance.
-    """
-    # Position: left side, below the exercise angle.
-    count_text = f"REP COUNT: {detector.rep_count}"
-    state_text = f"REP STATE: {detector.state.value.upper()}"
-
-    cv2.putText(
-        frame, count_text,
-        (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2,
-    )
-    cv2.putText(
-        frame, state_text,
-        (10, 145), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1,
-    )
-
-
-# ============================================================
-# End Phase 5 code
-# ============================================================
-
-
-# ============================================================
-# Phase 6 — Quality display
-# ============================================================
 
 # Maximum frame history buffer size.
 _FRAME_HISTORY_MAX = 600
-
-
-def _draw_quality_overlay(
-    frame, quality: QualityResult | None,
-) -> None:
-    """Draw last rep quality scores on the frame.
-
-    Phase 6 — quality display only, no feedback.
-
-    Args:
-        frame: The OpenCV BGR frame to draw on (modified in-place).
-        quality: QualityResult of the last completed rep, or None.
-    """
-    if quality is None:
-        return
-
-    base_x = 10
-    base_y = 175
-    line_height = 20
-    color_label = (180, 180, 180)
-    color_score = (0, 255, 200)
-
-    cv2.putText(
-        frame, f"LAST REP (#{quality.rep_number})",
-        (base_x, base_y),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color_label, 1,
-    )
-
-    scores = [
-        ("ROM", quality.rom_score),
-        ("ALIGN", quality.alignment_score),
-        ("STAB", quality.stability_score),
-        ("COMP", quality.compensation_score),
-        ("QUALITY", quality.overall_score),
-    ]
-    for i, (label, score) in enumerate(scores):
-        y_pos = base_y + (i + 1) * line_height
-        text = f"{label}: {score:.1f}"
-        color = color_score if label != "QUALITY" else (0, 255, 255)
-        cv2.putText(
-            frame, text,
-            (base_x, y_pos),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.42, color, 1,
-        )
-
-
-# ============================================================
-# End Phase 6 code
-# ============================================================
-
-
-# ============================================================
-# Phase 7 — Feedback display
-# ============================================================
-
-
-def _draw_feedback_overlay(
-    frame, messages: list[str],
-) -> None:
-    """Draw active corrective feedback messages on the frame.
-
-    Phase 7 — feedback display only.
-
-    Args:
-        frame: The OpenCV BGR frame to draw on (modified in-place).
-        messages: List of feedback message strings to display.
-    """
-    if not messages:
-        return
-
-    h = frame.shape[0]
-    base_x = 10
-    base_y = h - 20 * len(messages) - 10
-    color = (0, 180, 255)  # Orange.
-
-    for i, msg in enumerate(messages):
-        y_pos = base_y + i * 20
-        cv2.putText(
-            frame, msg,
-            (base_x, y_pos),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.40, color, 1,
-        )
-
-
-# ============================================================
-# End Phase 7 code
-# ============================================================
 
 
 def main() -> None:
@@ -752,9 +399,6 @@ def main() -> None:
                     result.smoothed_landmarks, side,
                 )
 
-            # Phase 3 — draw live angle overlay.
-            _draw_angle_overlay(frame, exercise, angle, side)
-
             # Phase 4A — compute and display raw posture metrics.
             if result.pose_detected:
                 posture = compute_posture_metrics(
@@ -766,11 +410,9 @@ def main() -> None:
                     shoulder_height_difference=None,
                     neck_tilt=None,
                 )
-            _draw_posture_metrics_overlay(frame, posture)
 
             # Phase 4B — evaluate and display compensation flags.
             comp = evaluate_compensation(posture, calibration_result)
-            _draw_compensation_overlay(frame, comp)
 
             # Phase 7 — generate corrective feedback for flagged compensations.
             # Only print new feedback when the set of flagged types changes
@@ -862,14 +504,16 @@ def main() -> None:
                 print(f"      Compensation: {last_quality.compensation_score:.1f}")
                 print(f"      Overall:      {last_quality.overall_score:.1f}")
 
-            # Phase 5 — draw rep overlay.
-            _draw_rep_overlay(frame, rep_detector)
-
-            # Phase 6 — draw quality overlay.
-            _draw_quality_overlay(frame, last_quality)
-
-            # Phase 7 — draw feedback overlay.
-            _draw_feedback_overlay(frame, active_feedback)
+            # Phase 8 — Draw complete HUD overlay.
+            draw_hud(
+                frame,
+                angle=angle,
+                target_rom=exercise.rom_target,
+                rep_state=rep_detector.state.value.upper(),
+                rep_count=rep_detector.rep_count,
+                feedback_messages=active_feedback,
+                side=side,
+            )
 
             frame_index += 1
 
