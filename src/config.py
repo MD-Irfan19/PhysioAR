@@ -69,9 +69,9 @@ LANDMARK_VISIBILITY_THRESHOLD = 0.5
 #   NECK_TILT_FLOOR:     degrees
 #
 # Initial values only; not experimentally validated.
-TORSO_LEAN_FLOOR = 5
-SHOULDER_HIKE_FLOOR = 3
-NECK_TILT_FLOOR = 5
+TORSO_LEAN_FLOOR = 4
+SHOULDER_HIKE_FLOOR = 1
+NECK_TILT_FLOOR = 4
 
 # ============================================================
 # Movement Quality Scoring (Phase 6)
