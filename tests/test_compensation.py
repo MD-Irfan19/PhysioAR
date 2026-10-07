@@ -457,10 +457,10 @@ class TestConfigConstants:
     """Verify config constants exist and have expected values."""
 
     def test_torso_lean_floor(self):
-        assert TORSO_LEAN_FLOOR == 5
+        assert TORSO_LEAN_FLOOR == 4
 
     def test_shoulder_hike_floor(self):
-        assert SHOULDER_HIKE_FLOOR == 3
+        assert SHOULDER_HIKE_FLOOR == 1
 
     def test_neck_tilt_floor(self):
-        assert NECK_TILT_FLOOR == 5
+        assert NECK_TILT_FLOOR == 4
