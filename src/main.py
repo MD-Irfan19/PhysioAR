@@ -419,12 +419,10 @@ def main() -> None:
             # to avoid per-frame spam.
             current_flagged: set[str] = set()
             if comp is not None:
-                if comp.torso_lean.flagged:
-                    current_flagged.add("torso_lean")
-                if comp.shoulder_hike.flagged:
-                    current_flagged.add("shoulder_hike")
-                if comp.neck_tilt.flagged:
-                    current_flagged.add("neck_tilt")
+                for comp_type in ["torso_lean", "shoulder_hike", "neck_tilt", "hip_rotation", "lateral_trunk_lean"]:
+                    metric_result = getattr(comp, comp_type, None)
+                    if metric_result and metric_result.flagged:
+                        current_flagged.add(comp_type)
 
             if current_flagged != prev_flagged:
                 active_feedback = generate_all_feedback(exercise, comp)
@@ -464,6 +462,12 @@ def main() -> None:
                 neck_tilt_flagged=(
                     comp.neck_tilt.flagged if comp is not None else False
                 ),
+                hip_rotation_flagged=(
+                    comp.hip_rotation.flagged if comp is not None else False
+                ),
+                lateral_trunk_lean_flagged=(
+                    comp.lateral_trunk_lean.flagged if comp is not None else False
+                ),
                 torso_deviation=(
                     comp.torso_lean.deviation if comp is not None else None
                 ),
@@ -472,6 +476,12 @@ def main() -> None:
                 ),
                 neck_deviation=(
                     comp.neck_tilt.deviation if comp is not None else None
+                ),
+                hip_rotation_deviation=(
+                    comp.hip_rotation.deviation if comp is not None else None
+                ),
+                lateral_trunk_lean_deviation=(
+                    comp.lateral_trunk_lean.deviation if comp is not None else None
                 ),
             )
             frame_history.append(sample)

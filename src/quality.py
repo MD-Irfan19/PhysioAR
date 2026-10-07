@@ -119,22 +119,32 @@ class FrameSample:
             was flagged this frame.
         neck_tilt_flagged: Whether neck tilt compensation
             was flagged this frame.
+        hip_rotation_flagged: Whether hip rotation compensation
+            was flagged this frame.
+        lateral_trunk_lean_flagged: Whether lateral trunk lean compensation
+            was flagged this frame.
         torso_deviation: abs(torso_lean - baseline_mean), or None.
         shoulder_deviation: abs(shoulder_diff - baseline_mean), or None.
         neck_deviation: abs(neck_tilt - baseline_mean), or None.
+        hip_rotation_deviation: abs(hip_rotation - baseline_mean), or None.
+        lateral_trunk_lean_deviation: abs(lateral_trunk_lean - baseline_mean), or None.
     """
 
-    frame_index: int
-    angle: Optional[float]
-    torso_lean: Optional[float]
-    shoulder_height_diff: Optional[float]
-    neck_tilt: Optional[float]
-    torso_lean_flagged: bool
-    shoulder_hike_flagged: bool
-    neck_tilt_flagged: bool
-    torso_deviation: Optional[float]
-    shoulder_deviation: Optional[float]
-    neck_deviation: Optional[float]
+    frame_index: int = 0
+    angle: Optional[float] = None
+    torso_lean: Optional[float] = None
+    shoulder_height_diff: Optional[float] = None
+    neck_tilt: Optional[float] = None
+    torso_lean_flagged: bool = False
+    shoulder_hike_flagged: bool = False
+    neck_tilt_flagged: bool = False
+    hip_rotation_flagged: bool = False
+    lateral_trunk_lean_flagged: bool = False
+    torso_deviation: Optional[float] = None
+    shoulder_deviation: Optional[float] = None
+    neck_deviation: Optional[float] = None
+    hip_rotation_deviation: Optional[float] = None
+    lateral_trunk_lean_deviation: Optional[float] = None
 
 
 # ============================================================
@@ -400,6 +410,10 @@ def _compute_avg_alignment_deviation_ratio(
             )
         if s.neck_deviation is not None:
             ratios.append(s.neck_deviation / normalization_constant)
+        if s.hip_rotation_deviation is not None:
+            ratios.append(s.hip_rotation_deviation / normalization_constant)
+        if s.lateral_trunk_lean_deviation is not None:
+            ratios.append(s.lateral_trunk_lean_deviation / normalization_constant)
 
     if not ratios:
         return None
@@ -415,7 +429,9 @@ def _count_distinct_compensations(samples: list[FrameSample]) -> int:
     torso_flagged = any(s.torso_lean_flagged for s in samples)
     shoulder_flagged = any(s.shoulder_hike_flagged for s in samples)
     neck_flagged = any(s.neck_tilt_flagged for s in samples)
-    return sum([torso_flagged, shoulder_flagged, neck_flagged])
+    hip_flagged = any(s.hip_rotation_flagged for s in samples)
+    lat_lean_flagged = any(s.lateral_trunk_lean_flagged for s in samples)
+    return sum([torso_flagged, shoulder_flagged, neck_flagged, hip_flagged, lat_lean_flagged])
 
 
 # ============================================================

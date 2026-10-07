@@ -43,6 +43,8 @@ def _make_calibration(
         shoulder_height_difference=_make_baseline(shoulder_mean, shoulder_std),
         neck_tilt=_make_baseline(neck_mean, neck_std),
         hip_alignment=_make_baseline(0.0, 0.0),
+        hip_rotation=_make_baseline(0.0, 0.0),
+        lateral_trunk_lean=_make_baseline(0.0, 0.0),
         valid_samples=100,
         skipped_samples=5,
         duration_seconds=10.0,
@@ -203,7 +205,7 @@ class TestTorsoLeanMapping:
 
     def test_torso_lean_uses_spine_angle(self):
         cal = _make_calibration(spine_mean=3.0, spine_std=1.0)
-        posture = PostureMetrics(torso_lean=15.0, shoulder_height_difference=0.01, neck_tilt=1.5)
+        posture = PostureMetrics(torso_lean=15.0, shoulder_height_difference=0.01, neck_tilt=1.5, hip_rotation=None, lateral_trunk_lean=None)
         comp = evaluate_compensation(posture, cal)
         assert comp is not None
         assert comp.torso_lean.baseline_mean == pytest.approx(3.0)
@@ -211,7 +213,7 @@ class TestTorsoLeanMapping:
 
     def test_torso_lean_uses_correct_floor(self):
         cal = _make_calibration(spine_std=0.5)
-        posture = PostureMetrics(torso_lean=10.0, shoulder_height_difference=0.01, neck_tilt=1.5)
+        posture = PostureMetrics(torso_lean=10.0, shoulder_height_difference=0.01, neck_tilt=1.5, hip_rotation=None, lateral_trunk_lean=None)
         comp = evaluate_compensation(posture, cal)
         # threshold = max(2*0.5, TORSO_LEAN_FLOOR) = max(1, 5) = 5
         assert comp.torso_lean.threshold == pytest.approx(TORSO_LEAN_FLOOR)
@@ -222,14 +224,14 @@ class TestShoulderHikeMapping:
 
     def test_shoulder_hike_uses_correct_baseline(self):
         cal = _make_calibration(shoulder_mean=0.01, shoulder_std=0.003)
-        posture = PostureMetrics(torso_lean=2.0, shoulder_height_difference=5.0, neck_tilt=1.5)
+        posture = PostureMetrics(torso_lean=2.0, shoulder_height_difference=5.0, neck_tilt=1.5, hip_rotation=None, lateral_trunk_lean=None)
         comp = evaluate_compensation(posture, cal)
         assert comp.shoulder_hike.baseline_mean == pytest.approx(0.01)
         assert comp.shoulder_hike.deviation == pytest.approx(4.99)
 
     def test_shoulder_hike_uses_correct_floor(self):
         cal = _make_calibration(shoulder_std=0.001)
-        posture = PostureMetrics(torso_lean=2.0, shoulder_height_difference=5.0, neck_tilt=1.5)
+        posture = PostureMetrics(torso_lean=2.0, shoulder_height_difference=5.0, neck_tilt=1.5, hip_rotation=None, lateral_trunk_lean=None)
         comp = evaluate_compensation(posture, cal)
         # threshold = max(2*0.001, SHOULDER_HIKE_FLOOR) = max(0.002, 3) = 3
         assert comp.shoulder_hike.threshold == pytest.approx(SHOULDER_HIKE_FLOOR)
@@ -240,14 +242,14 @@ class TestNeckTiltMapping:
 
     def test_neck_tilt_uses_correct_baseline(self):
         cal = _make_calibration(neck_mean=1.0, neck_std=0.5)
-        posture = PostureMetrics(torso_lean=2.0, shoulder_height_difference=0.01, neck_tilt=10.0)
+        posture = PostureMetrics(torso_lean=2.0, shoulder_height_difference=0.01, neck_tilt=10.0, hip_rotation=None, lateral_trunk_lean=None)
         comp = evaluate_compensation(posture, cal)
         assert comp.neck_tilt.baseline_mean == pytest.approx(1.0)
         assert comp.neck_tilt.deviation == pytest.approx(9.0)
 
     def test_neck_tilt_uses_correct_floor(self):
         cal = _make_calibration(neck_std=0.5)
-        posture = PostureMetrics(torso_lean=2.0, shoulder_height_difference=0.01, neck_tilt=10.0)
+        posture = PostureMetrics(torso_lean=2.0, shoulder_height_difference=0.01, neck_tilt=10.0, hip_rotation=None, lateral_trunk_lean=None)
         comp = evaluate_compensation(posture, cal)
         # threshold = max(2*0.5, NECK_TILT_FLOOR) = max(1, 5) = 5
         assert comp.neck_tilt.threshold == pytest.approx(NECK_TILT_FLOOR)
@@ -263,7 +265,7 @@ class TestMetricCrossMapping:
 
     def test_torso_not_using_shoulder_baseline(self):
         cal = _make_calibration(spine_mean=2.0, shoulder_mean=100.0)
-        posture = PostureMetrics(torso_lean=12.0, shoulder_height_difference=0.01, neck_tilt=1.5)
+        posture = PostureMetrics(torso_lean=12.0, shoulder_height_difference=0.01, neck_tilt=1.5, hip_rotation=None, lateral_trunk_lean=None)
         comp = evaluate_compensation(posture, cal)
         # If torso accidentally used shoulder baseline (100), deviation would be 88
         assert comp.torso_lean.baseline_mean == pytest.approx(2.0)
@@ -271,13 +273,13 @@ class TestMetricCrossMapping:
 
     def test_shoulder_not_using_neck_baseline(self):
         cal = _make_calibration(shoulder_mean=0.01, neck_mean=100.0)
-        posture = PostureMetrics(torso_lean=2.0, shoulder_height_difference=5.0, neck_tilt=1.5)
+        posture = PostureMetrics(torso_lean=2.0, shoulder_height_difference=5.0, neck_tilt=1.5, hip_rotation=None, lateral_trunk_lean=None)
         comp = evaluate_compensation(posture, cal)
         assert comp.shoulder_hike.baseline_mean == pytest.approx(0.01)
 
     def test_neck_not_using_torso_baseline(self):
         cal = _make_calibration(neck_mean=1.0, spine_mean=100.0)
-        posture = PostureMetrics(torso_lean=2.0, shoulder_height_difference=0.01, neck_tilt=10.0)
+        posture = PostureMetrics(torso_lean=2.0, shoulder_height_difference=0.01, neck_tilt=10.0, hip_rotation=None, lateral_trunk_lean=None)
         comp = evaluate_compensation(posture, cal)
         assert comp.neck_tilt.baseline_mean == pytest.approx(1.0)
         assert comp.neck_tilt.deviation == pytest.approx(9.0)
@@ -310,7 +312,7 @@ class TestCalibrationUnavailable:
     """No calibration result → no compensation evaluation."""
 
     def test_none_calibration_returns_none(self):
-        posture = PostureMetrics(torso_lean=5.0, shoulder_height_difference=0.01, neck_tilt=1.0)
+        posture = PostureMetrics(torso_lean=5.0, shoulder_height_difference=0.01, neck_tilt=1.0, hip_rotation=None, lateral_trunk_lean=None)
         comp = evaluate_compensation(posture, None)
         assert comp is None
 
@@ -348,7 +350,7 @@ class TestRealisticTorsoCompensation:
         posture = PostureMetrics(
             torso_lean=15.0,    # deviation=13, threshold=5 → FLAGGED
             shoulder_height_difference=0.012,
-            neck_tilt=2.0,
+            neck_tilt=2.0, hip_rotation=None, lateral_trunk_lean=None,
         )
         comp = evaluate_compensation(posture, cal)
         assert comp.torso_lean.flagged is True
@@ -364,7 +366,7 @@ class TestRealisticShoulderHike:
         posture = PostureMetrics(
             torso_lean=2.5,
             shoulder_height_difference=10.0,  # deviation≈10, threshold=3 → FLAGGED
-            neck_tilt=1.8,
+            neck_tilt=1.8, hip_rotation=None, lateral_trunk_lean=None,
         )
         comp = evaluate_compensation(posture, cal)
         assert comp.torso_lean.flagged is False
@@ -380,7 +382,7 @@ class TestRealisticNeckTilt:
         posture = PostureMetrics(
             torso_lean=2.5,
             shoulder_height_difference=0.012,
-            neck_tilt=12.0,     # deviation=10.5, threshold=5 → FLAGGED
+            neck_tilt=12.0, hip_rotation=None, lateral_trunk_lean=None,     # deviation=10.5, threshold=5 → FLAGGED
         )
         comp = evaluate_compensation(posture, cal)
         assert comp.torso_lean.flagged is False
@@ -407,7 +409,7 @@ class TestResultStructure:
 
     def test_compensation_result_has_three_fields(self):
         cal = _make_calibration()
-        posture = PostureMetrics(torso_lean=2.0, shoulder_height_difference=0.01, neck_tilt=1.5)
+        posture = PostureMetrics(torso_lean=2.0, shoulder_height_difference=0.01, neck_tilt=1.5, hip_rotation=None, lateral_trunk_lean=None)
         comp = evaluate_compensation(posture, cal)
         assert isinstance(comp.torso_lean, CompensationMetricResult)
         assert isinstance(comp.shoulder_hike, CompensationMetricResult)
@@ -427,7 +429,7 @@ class TestPartialNone:
         posture = PostureMetrics(
             torso_lean=None,
             shoulder_height_difference=0.01,
-            neck_tilt=1.5,
+            neck_tilt=1.5, hip_rotation=None, lateral_trunk_lean=None,
         )
         comp = evaluate_compensation(posture, cal)
         assert comp.torso_lean.flagged is False
@@ -440,7 +442,7 @@ class TestPartialNone:
         posture = PostureMetrics(
             torso_lean=None,
             shoulder_height_difference=None,
-            neck_tilt=None,
+            neck_tilt=None, hip_rotation=None, lateral_trunk_lean=None,
         )
         comp = evaluate_compensation(posture, cal)
         assert comp.torso_lean.flagged is False

@@ -517,13 +517,139 @@ class TestPostureMetricsDataclass:
     """PostureMetrics fields exist and are accessible."""
 
     def test_fields_exist(self):
-        pm = PostureMetrics(torso_lean=1.0, shoulder_height_difference=0.01, neck_tilt=2.0)
+        pm = PostureMetrics(torso_lean=1.0, shoulder_height_difference=0.01, neck_tilt=2.0, hip_rotation=None, lateral_trunk_lean=None)
         assert pm.torso_lean == 1.0
         assert pm.shoulder_height_difference == 0.01
         assert pm.neck_tilt == 2.0
 
     def test_none_values(self):
-        pm = PostureMetrics(torso_lean=None, shoulder_height_difference=None, neck_tilt=None)
+        pm = PostureMetrics(torso_lean=None, shoulder_height_difference=None, neck_tilt=None, hip_rotation=None, lateral_trunk_lean=None)
         assert pm.torso_lean is None
         assert pm.shoulder_height_difference is None
         assert pm.neck_tilt is None
+
+
+# ================================================================
+# Phase 10 Extension — Hip Rotation
+# ================================================================
+
+from src.metrics.posture import compute_hip_rot_metric
+
+class TestComputeHipRotation:
+    """Tests for the Hip Rotation proxy metric."""
+
+    def test_level_hips(self):
+        """Approximately level hips \u2192 near-zero metric."""
+        lm = _make_landmarks({
+            _L_HIP: (0.4, 0.8),
+            _R_HIP: (0.6, 0.8),
+        })
+        val = compute_hip_rot_metric(lm)
+        assert val is not None
+        assert val == pytest.approx(0.0)
+
+    def test_rotated_hips(self):
+        """Rotated/tilted hip line \u2192 larger metric."""
+        lm = _make_landmarks({
+            _L_HIP: (0.4, 0.8),
+            _R_HIP: (0.6, 0.7),
+        })
+        val = compute_hip_rot_metric(lm)
+        assert val is not None
+        assert val > 10.0  # Actually ~26.5 deg
+
+    def test_missing_left_hip(self):
+        lm = _make_landmarks({
+            _L_HIP: (0.4, 0.8, 0.1),
+            _R_HIP: (0.6, 0.8),
+        })
+        val = compute_hip_rot_metric(lm, visibility_threshold=0.5)
+        assert val is None
+
+    def test_missing_right_hip(self):
+        lm = _make_landmarks({
+            _L_HIP: (0.4, 0.8),
+            _R_HIP: (0.6, 0.8, 0.1),
+        })
+        val = compute_hip_rot_metric(lm, visibility_threshold=0.5)
+        assert val is None
+
+    def test_low_visibility(self):
+        lm = _make_landmarks({
+            _L_HIP: (0.4, 0.8, 0.4),  # < 0.5
+            _R_HIP: (0.6, 0.8, 0.9),
+        })
+        val = compute_hip_rot_metric(lm, visibility_threshold=0.5)
+        assert val is None
+
+    def test_degenerate_geometry(self):
+        lm = _make_landmarks({
+            _L_HIP: (0.5, 0.5),
+            _R_HIP: (0.5, 0.5),
+        })
+        val = compute_hip_rot_metric(lm)
+        assert val is None
+
+# ================================================================
+# Phase 10 Extension — Lateral Trunk Lean
+# ================================================================
+
+from src.metrics.posture import compute_lateral_trunk_lean_metric
+
+class TestComputeLateralTrunkLean:
+    """Tests for the Lateral Trunk Lean metric."""
+
+    def test_upright_torso(self):
+        """Upright torso \u2192 near-zero metric."""
+        lm = _make_landmarks({
+            _L_SHOULDER: (0.4, 0.5),
+            _R_SHOULDER: (0.6, 0.5),
+            _L_HIP: (0.4, 0.8),
+            _R_HIP: (0.6, 0.8),
+        })
+        val = compute_lateral_trunk_lean_metric(lm)
+        assert val is not None
+        assert val == pytest.approx(0.0)
+
+    def test_lateral_torso_displacement(self):
+        """Lateral torso displacement \u2192 larger metric."""
+        lm = _make_landmarks({
+            _L_SHOULDER: (0.5, 0.5),
+            _R_SHOULDER: (0.7, 0.5),
+            _L_HIP: (0.4, 0.8),
+            _R_HIP: (0.6, 0.8),
+        })
+        # Shoulders shifted right by 0.1
+        val = compute_lateral_trunk_lean_metric(lm)
+        assert val is not None
+        assert val > 10.0  # Actually ~18.4 deg
+
+    def test_missing_shoulder(self):
+        lm = _make_landmarks({
+            _L_SHOULDER: (0.4, 0.5, 0.1),
+            _R_SHOULDER: (0.6, 0.5),
+            _L_HIP: (0.4, 0.8),
+            _R_HIP: (0.6, 0.8),
+        })
+        val = compute_lateral_trunk_lean_metric(lm, visibility_threshold=0.5)
+        assert val is None
+
+    def test_missing_hip(self):
+        lm = _make_landmarks({
+            _L_SHOULDER: (0.4, 0.5),
+            _R_SHOULDER: (0.6, 0.5),
+            _L_HIP: (0.4, 0.8),
+            _R_HIP: (0.6, 0.8, 0.1),
+        })
+        val = compute_lateral_trunk_lean_metric(lm, visibility_threshold=0.5)
+        assert val is None
+
+    def test_degenerate_geometry(self):
+        lm = _make_landmarks({
+            _L_SHOULDER: (0.5, 0.5),
+            _R_SHOULDER: (0.5, 0.5),
+            _L_HIP: (0.5, 0.5),
+            _R_HIP: (0.5, 0.5),
+        })
+        val = compute_lateral_trunk_lean_metric(lm)
+        assert val is None

@@ -45,9 +45,13 @@ def _make_sample(
     torso_lean_flagged=False,
     shoulder_hike_flagged=False,
     neck_tilt_flagged=False,
+    hip_rotation_flagged=False,
+    lateral_trunk_lean_flagged=False,
     torso_deviation=0.5,
     shoulder_deviation=0.005,
     neck_deviation=0.3,
+    hip_rotation_deviation=None,
+    lateral_trunk_lean_deviation=None,
 ) -> FrameSample:
     return FrameSample(
         frame_index=frame_index,
@@ -58,9 +62,13 @@ def _make_sample(
         torso_lean_flagged=torso_lean_flagged,
         shoulder_hike_flagged=shoulder_hike_flagged,
         neck_tilt_flagged=neck_tilt_flagged,
+        hip_rotation_flagged=hip_rotation_flagged,
+        lateral_trunk_lean_flagged=lateral_trunk_lean_flagged,
         torso_deviation=torso_deviation,
         shoulder_deviation=shoulder_deviation,
         neck_deviation=neck_deviation,
+        hip_rotation_deviation=hip_rotation_deviation,
+        lateral_trunk_lean_deviation=lateral_trunk_lean_deviation,
     )
 
 

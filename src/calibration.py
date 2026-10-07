@@ -45,6 +45,7 @@ posture during this session and is NOT a clinical assessment.
 
 from __future__ import annotations
 
+import math
 import statistics
 import time
 from dataclasses import dataclass
@@ -119,13 +120,15 @@ class CalibrationResult:
         duration_seconds: Actual duration of the calibration capture.
     """
 
-    spine_angle: MetricBaseline
-    shoulder_height_difference: MetricBaseline
-    neck_tilt: MetricBaseline
-    hip_alignment: MetricBaseline
-    valid_samples: int
-    skipped_samples: int
-    duration_seconds: float
+    spine_angle: MetricBaseline = None
+    shoulder_height_difference: MetricBaseline = None
+    neck_tilt: MetricBaseline = None
+    hip_alignment: MetricBaseline = None
+    hip_rotation: MetricBaseline = None
+    lateral_trunk_lean: MetricBaseline = None
+    valid_samples: int = 0
+    skipped_samples: int = 0
+    duration_seconds: float = 0.0
 
 
 # ============================================================
@@ -301,6 +304,67 @@ def compute_hip_alignment(
     return abs(left_hip_xy[1] - right_hip_xy[1])
 
 
+def compute_hip_rotation(
+    left_hip_xy: tuple[float, float],
+    right_hip_xy: tuple[float, float],
+) -> float:
+    """Calculate hip rotation (pelvic tilt/rotation proxy) in degrees.
+
+    Calculates the angle of the hip line relative to horizontal.
+    0 = hips are level/horizontal.
+
+    Args:
+        left_hip_xy: (x, y) of the left hip.
+        right_hip_xy: (x, y) of the right hip.
+
+    Returns:
+        Absolute angle in degrees from horizontal.
+    """
+    dx = right_hip_xy[0] - left_hip_xy[0]
+    dy = right_hip_xy[1] - left_hip_xy[1]
+    if dx == 0 and dy == 0:
+        raise ValueError("Degenerate geometry")
+    
+    angle = abs(math.degrees(math.atan2(dy, dx)))
+    if angle > 90:
+        angle = 180 - angle
+    return angle
+
+
+def compute_lateral_trunk_lean(
+    left_shoulder_xy: tuple[float, float],
+    right_shoulder_xy: tuple[float, float],
+    left_hip_xy: tuple[float, float],
+    right_hip_xy: tuple[float, float],
+) -> float:
+    """Calculate lateral trunk lean in degrees.
+
+    Calculates the signed horizontal-vs-vertical orientation of the torso
+    and returns its absolute lateral deviation.
+
+    Args:
+        left_shoulder_xy: (x, y) of the left shoulder.
+        right_shoulder_xy: (x, y) of the right shoulder.
+        left_hip_xy: (x, y) of the left hip.
+        right_hip_xy: (x, y) of the right hip.
+
+    Returns:
+        Lateral trunk lean angle in degrees (0 = upright).
+    """
+    hip_midpoint = calculate_midpoint(left_hip_xy, right_hip_xy)
+    shoulder_midpoint = calculate_midpoint(left_shoulder_xy, right_shoulder_xy)
+    torso_dx = shoulder_midpoint[0] - hip_midpoint[0]
+    torso_dy = shoulder_midpoint[1] - hip_midpoint[1]
+    
+    if torso_dx == 0 and torso_dy == 0:
+        raise ValueError("Degenerate geometry")
+        
+    angle = abs(math.degrees(math.atan2(torso_dx, -torso_dy)))
+    if angle > 90:
+        angle = 180 - angle
+    return angle
+
+
 # ============================================================
 # Per-frame metric extraction
 # ============================================================
@@ -309,7 +373,7 @@ def compute_hip_alignment(
 def compute_frame_metrics(
     smoothed_landmarks: list,
     visibility_threshold: float | None = None,
-) -> tuple[float, float, float, float] | None:
+) -> tuple[float, float, float, float, float, float] | None:
     """Compute all four posture metrics from a single frame's smoothed landmarks.
 
     Performs landmark validity checking BEFORE metric calculation:
@@ -333,8 +397,8 @@ def compute_frame_metrics(
 
     Returns:
         A tuple of (spine_angle, shoulder_height_diff, neck_tilt,
-        hip_alignment) if all metrics were computed successfully,
-        or None if the frame should be skipped.
+        hip_alignment, hip_rotation, lateral_trunk_lean) if all metrics 
+        were computed successfully, or None if the frame should be skipped.
     """
     # Step 1+2: Validate required landmarks (index + visibility).
     reasons = validate_required_landmarks(
@@ -363,8 +427,10 @@ def compute_frame_metrics(
         shoulder = compute_shoulder_height_difference(l_shoulder_xy, r_shoulder_xy)
         neck = compute_neck_tilt(l_shoulder_xy, r_shoulder_xy, nose_xy)
         hip = compute_hip_alignment(l_hip_xy, r_hip_xy)
+        hip_rot = compute_hip_rotation(l_hip_xy, r_hip_xy)
+        lat_lean = compute_lateral_trunk_lean(l_shoulder_xy, r_shoulder_xy, l_hip_xy, r_hip_xy)
 
-        return (spine, shoulder, neck, hip)
+        return (spine, shoulder, neck, hip, hip_rot, lat_lean)
 
     except (ValueError, IndexError, AttributeError):
         # Degenerate geometry or missing data — skip the frame.
@@ -431,6 +497,8 @@ def run_calibration(
     shoulder_values: list[float] = []
     neck_values: list[float] = []
     hip_values: list[float] = []
+    hip_rot_values: list[float] = []
+    lat_lean_values: list[float] = []
 
     valid_count = 0
     skipped_count = 0
@@ -544,11 +612,13 @@ def run_calibration(
                 skip_reason_counts.get("degenerate_geometry", 0) + 1
             )
         else:
-            spine, shoulder, neck, hip = metrics
+            spine, shoulder, neck, hip, hip_rot, lat_lean = metrics
             spine_values.append(spine)
             shoulder_values.append(shoulder)
             neck_values.append(neck)
             hip_values.append(hip)
+            hip_rot_values.append(hip_rot)
+            lat_lean_values.append(lat_lean)
             valid_count += 1
 
             # Per-frame diagnostic output.
@@ -610,6 +680,14 @@ def run_calibration(
         hip_alignment=MetricBaseline(
             mean=statistics.mean(hip_values),
             std=statistics.stdev(hip_values),
+        ),
+        hip_rotation=MetricBaseline(
+            mean=statistics.mean(hip_rot_values),
+            std=statistics.stdev(hip_rot_values),
+        ),
+        lateral_trunk_lean=MetricBaseline(
+            mean=statistics.mean(lat_lean_values),
+            std=statistics.stdev(lat_lean_values),
         ),
         valid_samples=valid_count,
         skipped_samples=skipped_count,

@@ -88,6 +88,8 @@ from src.calibration import (
     compute_spine_angle,
     compute_shoulder_height_difference,
     compute_neck_tilt,
+    compute_hip_rotation,
+    compute_lateral_trunk_lean,
 )
 from src.config import LANDMARK_VISIBILITY_THRESHOLD
 
@@ -110,11 +112,17 @@ class PostureMetrics:
             units, or None if unavailable.
         neck_tilt: Neck tilt angle in degrees (0° = upright),
             or None if unavailable.
+        hip_rotation: Hip rotation (pelvic tilt/rotation proxy) in degrees,
+            or None if unavailable.
+        lateral_trunk_lean: Lateral trunk lean angle in degrees,
+            or None if unavailable.
     """
 
-    torso_lean: Optional[float]
-    shoulder_height_difference: Optional[float]
-    neck_tilt: Optional[float]
+    torso_lean: Optional[float] = None
+    shoulder_height_difference: Optional[float] = None
+    neck_tilt: Optional[float] = None
+    hip_rotation: Optional[float] = None
+    lateral_trunk_lean: Optional[float] = None
 
 
 def _get_landmark_xy(
@@ -283,6 +291,48 @@ def compute_neck_tilt_metric(
         return None
 
 
+def compute_hip_rot_metric(
+    smoothed_landmarks: list,
+    visibility_threshold: float | None = None,
+) -> Optional[float]:
+    """Compute hip rotation from smoothed landmarks."""
+    if visibility_threshold is None:
+        visibility_threshold = LANDMARK_VISIBILITY_THRESHOLD
+
+    l_hip = _get_landmark_xy(smoothed_landmarks, LEFT_HIP, visibility_threshold)
+    r_hip = _get_landmark_xy(smoothed_landmarks, RIGHT_HIP, visibility_threshold)
+
+    if l_hip is None or r_hip is None:
+        return None
+
+    try:
+        return compute_hip_rotation(l_hip, r_hip)
+    except ValueError:
+        return None
+
+
+def compute_lateral_trunk_lean_metric(
+    smoothed_landmarks: list,
+    visibility_threshold: float | None = None,
+) -> Optional[float]:
+    """Compute lateral trunk lean from smoothed landmarks."""
+    if visibility_threshold is None:
+        visibility_threshold = LANDMARK_VISIBILITY_THRESHOLD
+
+    l_shoulder = _get_landmark_xy(smoothed_landmarks, LEFT_SHOULDER, visibility_threshold)
+    r_shoulder = _get_landmark_xy(smoothed_landmarks, RIGHT_SHOULDER, visibility_threshold)
+    l_hip = _get_landmark_xy(smoothed_landmarks, LEFT_HIP, visibility_threshold)
+    r_hip = _get_landmark_xy(smoothed_landmarks, RIGHT_HIP, visibility_threshold)
+
+    if any(p is None for p in (l_shoulder, r_shoulder, l_hip, r_hip)):
+        return None
+
+    try:
+        return compute_lateral_trunk_lean(l_shoulder, r_shoulder, l_hip, r_hip)
+    except ValueError:
+        return None
+
+
 def compute_posture_metrics(
     smoothed_landmarks: list,
     visibility_threshold: float | None = None,
@@ -317,6 +367,12 @@ def compute_posture_metrics(
             smoothed_landmarks, visibility_threshold,
         ),
         neck_tilt=compute_neck_tilt_metric(
+            smoothed_landmarks, visibility_threshold,
+        ),
+        hip_rotation=compute_hip_rot_metric(
+            smoothed_landmarks, visibility_threshold,
+        ),
+        lateral_trunk_lean=compute_lateral_trunk_lean_metric(
             smoothed_landmarks, visibility_threshold,
         ),
     )

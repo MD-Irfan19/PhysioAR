@@ -98,13 +98,15 @@ class TestSeatedKneeExtensionDefinition:
         assert "right_knee" in expected
         assert "right_ankle" in expected
 
-    def test_compensation_checks_empty(self):
-        assert SEATED_KNEE_EXTENSION.compensation_checks == []
+    def test_compensation_checks(self):
+        assert SEATED_KNEE_EXTENSION.compensation_checks == ["torso_lean", "neck_tilt", "hip_rotation", "lateral_trunk_lean"]
 
     def test_feedback_templates_populated(self):
         templates = SEATED_KNEE_EXTENSION.feedback_templates
         assert "torso_lean" in templates
         assert "neck_tilt" in templates
+        assert "hip_rotation" in templates
+        assert "lateral_trunk_lean" in templates
         for template in templates.values():
             assert "{value}" in template
 

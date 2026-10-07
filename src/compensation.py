@@ -59,6 +59,8 @@ from src.config import (
     TORSO_LEAN_FLOOR,
     SHOULDER_HIKE_FLOOR,
     NECK_TILT_FLOOR,
+    HIP_ROTATION_FLOOR,
+    LATERAL_TRUNK_LEAN_FLOOR,
 )
 from src.metrics.posture import PostureMetrics
 
@@ -177,12 +179,12 @@ class CompensationMetricResult:
             Always False when current_value is None.
     """
 
-    current_value: Optional[float]
-    baseline_mean: float
-    baseline_std: float
-    deviation: Optional[float]
-    threshold: float
-    flagged: bool
+    current_value: Optional[float] = None
+    baseline_mean: float = 0.0
+    baseline_std: float = 0.0
+    deviation: Optional[float] = None
+    threshold: float = 0.0
+    flagged: bool = False
 
 
 @dataclass
@@ -193,11 +195,15 @@ class CompensationResult:
         torso_lean: Result for the torso lean metric.
         shoulder_hike: Result for the shoulder height difference metric.
         neck_tilt: Result for the neck tilt metric.
+        hip_rotation: Result for the hip rotation metric.
+        lateral_trunk_lean: Result for the lateral trunk lean metric.
     """
 
-    torso_lean: CompensationMetricResult
-    shoulder_hike: CompensationMetricResult
-    neck_tilt: CompensationMetricResult
+    torso_lean: CompensationMetricResult = None
+    shoulder_hike: CompensationMetricResult = None
+    neck_tilt: CompensationMetricResult = None
+    hip_rotation: CompensationMetricResult = None
+    lateral_trunk_lean: CompensationMetricResult = None
 
 
 # ============================================================
@@ -247,5 +253,15 @@ def evaluate_compensation(
             posture.neck_tilt,
             calibration_result.neck_tilt,
             NECK_TILT_FLOOR,
+        ),
+        hip_rotation=evaluate_metric(
+            posture.hip_rotation,
+            calibration_result.hip_rotation,
+            HIP_ROTATION_FLOOR,
+        ),
+        lateral_trunk_lean=evaluate_metric(
+            posture.lateral_trunk_lean,
+            calibration_result.lateral_trunk_lean,
+            LATERAL_TRUNK_LEAN_FLOOR,
         ),
     )

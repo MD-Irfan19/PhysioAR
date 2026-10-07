@@ -137,19 +137,25 @@ SEATED_KNEE_EXTENSION = ExerciseDefinition(
     name="Seated Knee Extension",
     camera_orientation=CameraOrientation.SIDE,
     target_joint="knee",
-    rom_target=160.0,
+    rom_target=150.0,
     rep_start_angle=90.0,
-    rep_end_angle=150.0,
+    rep_end_angle=140.0,
     angle_calculator=calculate_seated_knee_extension_angle,
-    compensation_checks=[],
+    compensation_checks=["torso_lean", "neck_tilt", "hip_rotation", "lateral_trunk_lean"],
     feedback_templates={
         "torso_lean": (
-            "Torso Lean = {value} — keep your trunk stable while"
+            "Torso Lean = {value}° — keep your trunk stable while"
             " extending the knee."
         ),
         "neck_tilt": (
-            "Neck Tilt = {value} — keep your head aligned with"
+            "Neck Tilt = {value}° — keep your head aligned with"
             " your torso while seated."
+        ),
+        "hip_rotation": (
+            "Hip Rotation = {value}° — keep your hips aligned and avoid rotating your pelvis during knee extension."
+        ),
+        "lateral_trunk_lean": (
+            "Lateral Trunk Lean = {value}° — keep your torso upright and avoid leaning to the side during knee extension."
         ),
     },
     expected_landmarks=[
