@@ -53,6 +53,17 @@ NECK TILT:
 
     Uses the same formula as calibration.compute_neck_tilt().
 
+HIP HIKE:
+    Value: abs(left_hip.y - right_hip.y)
+    Units: normalized image coordinates (0→1)
+    Result: 0 = level, larger = more asymmetry
+
+    Uses the same formula as calibration.compute_hip_alignment().
+
+TRUNK LEAN:
+    Same exact calculation as lateral_trunk_lean, measuring torso orientation
+    relative to vertical.
+
 ============================================================
 COORDINATE CONVENTION
 ============================================================
@@ -90,6 +101,7 @@ from src.calibration import (
     compute_neck_tilt,
     compute_hip_rotation,
     compute_lateral_trunk_lean,
+    compute_hip_alignment,
 )
 from src.config import LANDMARK_VISIBILITY_THRESHOLD
 
@@ -123,6 +135,8 @@ class PostureMetrics:
     neck_tilt: Optional[float] = None
     hip_rotation: Optional[float] = None
     lateral_trunk_lean: Optional[float] = None
+    hip_hike: Optional[float] = None
+    trunk_lean: Optional[float] = None
 
 
 def _get_landmark_xy(
@@ -333,11 +347,30 @@ def compute_lateral_trunk_lean_metric(
         return None
 
 
+# ... (down below before compute_posture_metrics)
+
+def compute_hip_hike_metric(
+    smoothed_landmarks: list,
+    visibility_threshold: float | None = None,
+) -> Optional[float]:
+    """Compute hip hike (absolute vertical difference) from smoothed landmarks."""
+    if visibility_threshold is None:
+        visibility_threshold = LANDMARK_VISIBILITY_THRESHOLD
+
+    l_hip = _get_landmark_xy(smoothed_landmarks, LEFT_HIP, visibility_threshold)
+    r_hip = _get_landmark_xy(smoothed_landmarks, RIGHT_HIP, visibility_threshold)
+
+    if l_hip is None or r_hip is None:
+        return None
+
+    return compute_hip_alignment(l_hip, r_hip)
+
+
 def compute_posture_metrics(
     smoothed_landmarks: list,
     visibility_threshold: float | None = None,
 ) -> PostureMetrics:
-    """Compute all three posture metrics for a single frame.
+    """Compute all posture metrics for a single frame.
 
     Each metric is computed independently. If one metric is
     unavailable (e.g., hips not visible), the other metrics may
@@ -355,10 +388,13 @@ def compute_posture_metrics(
             LANDMARK_VISIBILITY_THRESHOLD from config.
 
     Returns:
-        A PostureMetrics dataclass with the three raw metric values.
+        A PostureMetrics dataclass with the raw metric values.
         Any value may be None if the required landmarks are
         unavailable.
     """
+    lat_lean = compute_lateral_trunk_lean_metric(
+        smoothed_landmarks, visibility_threshold,
+    )
     return PostureMetrics(
         torso_lean=compute_torso_lean(
             smoothed_landmarks, visibility_threshold,
@@ -372,7 +408,9 @@ def compute_posture_metrics(
         hip_rotation=compute_hip_rot_metric(
             smoothed_landmarks, visibility_threshold,
         ),
-        lateral_trunk_lean=compute_lateral_trunk_lean_metric(
+        lateral_trunk_lean=lat_lean,
+        trunk_lean=lat_lean,
+        hip_hike=compute_hip_hike_metric(
             smoothed_landmarks, visibility_threshold,
         ),
     )

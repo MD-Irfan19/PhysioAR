@@ -74,6 +74,7 @@ SHOULDER_HIKE_FLOOR = 1
 NECK_TILT_FLOOR = 4
 HIP_ROTATION_FLOOR = 4
 LATERAL_TRUNK_LEAN_FLOOR = 4
+HIP_HIKE_FLOOR = 1
 
 # ============================================================
 # Movement Quality Scoring (Phase 6)

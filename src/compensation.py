@@ -61,6 +61,7 @@ from src.config import (
     NECK_TILT_FLOOR,
     HIP_ROTATION_FLOOR,
     LATERAL_TRUNK_LEAN_FLOOR,
+    HIP_HIKE_FLOOR,
 )
 from src.metrics.posture import PostureMetrics
 
@@ -204,6 +205,8 @@ class CompensationResult:
     neck_tilt: CompensationMetricResult = None
     hip_rotation: CompensationMetricResult = None
     lateral_trunk_lean: CompensationMetricResult = None
+    hip_hike: CompensationMetricResult = None
+    trunk_lean: CompensationMetricResult = None
 
 
 # ============================================================
@@ -261,6 +264,16 @@ def evaluate_compensation(
         ),
         lateral_trunk_lean=evaluate_metric(
             posture.lateral_trunk_lean,
+            calibration_result.lateral_trunk_lean,
+            LATERAL_TRUNK_LEAN_FLOOR,
+        ),
+        hip_hike=evaluate_metric(
+            posture.hip_hike,
+            calibration_result.hip_alignment,
+            HIP_HIKE_FLOOR,
+        ),
+        trunk_lean=evaluate_metric(
+            posture.trunk_lean,
             calibration_result.lateral_trunk_lean,
             LATERAL_TRUNK_LEAN_FLOOR,
         ),

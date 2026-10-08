@@ -80,11 +80,11 @@ class TestSeatedKneeExtensionDefinition:
         assert SEATED_KNEE_EXTENSION.target_joint == "knee"
 
     def test_rom_target(self):
-        assert SEATED_KNEE_EXTENSION.rom_target == 160.0
+        assert SEATED_KNEE_EXTENSION.rom_target == 150.0
 
     def test_rep_start_end_angles(self):
         assert SEATED_KNEE_EXTENSION.rep_start_angle == 90.0
-        assert SEATED_KNEE_EXTENSION.rep_end_angle == 150.0
+        assert SEATED_KNEE_EXTENSION.rep_end_angle == 140.0
 
     def test_angle_calculator(self):
         assert SEATED_KNEE_EXTENSION.angle_calculator is calculate_seated_knee_extension_angle

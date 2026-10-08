@@ -419,7 +419,7 @@ def main() -> None:
             # to avoid per-frame spam.
             current_flagged: set[str] = set()
             if comp is not None:
-                for comp_type in ["torso_lean", "shoulder_hike", "neck_tilt", "hip_rotation", "lateral_trunk_lean"]:
+                for comp_type in ["torso_lean", "shoulder_hike", "neck_tilt", "hip_rotation", "lateral_trunk_lean", "hip_hike", "trunk_lean"]:
                     metric_result = getattr(comp, comp_type, None)
                     if metric_result and metric_result.flagged:
                         current_flagged.add(comp_type)
@@ -468,6 +468,12 @@ def main() -> None:
                 lateral_trunk_lean_flagged=(
                     comp.lateral_trunk_lean.flagged if comp is not None else False
                 ),
+                hip_hike_flagged=(
+                    comp.hip_hike.flagged if comp is not None else False
+                ),
+                trunk_lean_flagged=(
+                    comp.trunk_lean.flagged if comp is not None else False
+                ),
                 torso_deviation=(
                     comp.torso_lean.deviation if comp is not None else None
                 ),
@@ -482,6 +488,12 @@ def main() -> None:
                 ),
                 lateral_trunk_lean_deviation=(
                     comp.lateral_trunk_lean.deviation if comp is not None else None
+                ),
+                hip_hike_deviation=(
+                    comp.hip_hike.deviation if comp is not None else None
+                ),
+                trunk_lean_deviation=(
+                    comp.trunk_lean.deviation if comp is not None else None
                 ),
             )
             frame_history.append(sample)
