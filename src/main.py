@@ -411,15 +411,33 @@ def main() -> None:
             # Phase 4B — evaluate and display compensation flags.
             comp = evaluate_compensation(posture, calibration_result)
 
+            generic_results = {}
+            if comp is not None:
+                from src.compensation import evaluate_generic_checks
+                from src.config import LANDMARK_VISIBILITY_THRESHOLD
+                generic_results = evaluate_generic_checks(
+                    exercise.generic_checks,
+                    posture,
+                    calibration_result,
+                    result.smoothed_landmarks,
+                    side,
+                    LANDMARK_VISIBILITY_THRESHOLD,
+                    rep_detector.state,
+                )
+                comp.generic_results = generic_results
+
             # Phase 7 — generate corrective feedback for flagged compensations.
             # Only print new feedback when the set of flagged types changes
             # to avoid per-frame spam.
             current_flagged: set[str] = set()
             if comp is not None:
-                for comp_type in ["torso_lean", "shoulder_hike", "neck_tilt", "hip_rotation", "lateral_trunk_lean", "hip_hike", "trunk_lean"]:
+                for comp_type in ["torso_lean", "shoulder_hike", "neck_tilt", "hip_rotation", "lateral_trunk_lean", "hip_hike", "trunk_lean", "shoulder_substitution"]:
                     metric_result = getattr(comp, comp_type, None)
                     if metric_result and metric_result.flagged:
                         current_flagged.add(comp_type)
+                for g_id, g_res in generic_results.items():
+                    if g_res.flagged:
+                        current_flagged.add(g_id)
 
             if current_flagged != prev_flagged:
                 active_feedback = generate_all_feedback(exercise, comp)
@@ -430,13 +448,20 @@ def main() -> None:
                     for comp_type in sorted(newly_flagged):
                         if comp is not None:
                             from src.feedback import generate_feedback
-                            metric = getattr(comp, comp_type, None)
-                            if metric and metric.deviation is not None:
-                                msg = generate_feedback(
-                                    exercise, comp_type, metric.deviation,
-                                )
-                                if msg:
-                                    new_msgs.append(msg)
+                            if comp_type in generic_results:
+                                g_res = generic_results[comp_type]
+                                val = g_res.deviation if g_res.deviation is not None else g_res.current_value
+                                msg = generate_feedback(exercise, comp_type, val)
+                            else:
+                                metric = getattr(comp, comp_type, None)
+                                if metric and metric.deviation is not None:
+                                    msg = generate_feedback(
+                                        exercise, comp_type, metric.deviation,
+                                    )
+                                else:
+                                    msg = None
+                            if msg:
+                                new_msgs.append(msg)
                     for msg in new_msgs:
                         print(f"  FEEDBACK: {msg}")
                 prev_flagged = current_flagged
@@ -492,6 +517,8 @@ def main() -> None:
                 trunk_lean_deviation=(
                     comp.trunk_lean.deviation if comp is not None else None
                 ),
+                generic_flags={k: v.flagged for k, v in generic_results.items()},
+                generic_deviations={k: v.deviation for k, v in generic_results.items() if v.deviation is not None},
             )
             frame_history.append(sample)
 

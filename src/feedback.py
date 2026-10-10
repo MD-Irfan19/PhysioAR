@@ -90,7 +90,7 @@ def format_deviation(
 def generate_feedback(
     exercise: ExerciseDefinition,
     compensation_type: str,
-    deviation: Optional[float],
+    value: Optional[float],
 ) -> Optional[str]:
     """Generate an explainable corrective feedback message.
 
@@ -109,12 +109,12 @@ def generate_feedback(
     Returns:
         A corrective feedback string containing the actual measured
         value, or None if:
-        - The deviation is None (no measurement available).
+        - The value is None (no measurement available).
         - The compensation_type is unknown/unsupported.
         - The exercise has no feedback template for this type.
     """
-    # No deviation → no feedback (never fabricate a measurement).
-    if deviation is None:
+    # No value → no feedback (never fabricate a measurement).
+    if value is None:
         return None
 
     # Look up template from the exercise definition.
@@ -123,7 +123,7 @@ def generate_feedback(
         return None
 
     # Format the measured value and substitute into the template.
-    formatted_value = format_deviation(compensation_type, deviation)
+    formatted_value = format_deviation(compensation_type, value)
     return template.format(value=formatted_value)
 
 
@@ -151,17 +151,30 @@ def generate_all_feedback(
 
     messages = []
 
-    # Map compensation type identifiers to their CompensationResult fields.
     type_to_result = {
         "torso_lean": comp.torso_lean,
         "shoulder_hike": comp.shoulder_hike,
         "neck_tilt": comp.neck_tilt,
+        "hip_rotation": comp.hip_rotation,
+        "lateral_trunk_lean": comp.lateral_trunk_lean,
+        "hip_hike": comp.hip_hike,
+        "trunk_lean": comp.trunk_lean,
+        "shoulder_substitution": comp.shoulder_substitution,
     }
 
     for comp_type, metric_result in type_to_result.items():
-        if metric_result.flagged:
+        if metric_result and metric_result.flagged:
             msg = generate_feedback(
                 exercise, comp_type, metric_result.deviation,
+            )
+            if msg is not None:
+                messages.append(msg)
+                
+    for g_id, g_res in comp.generic_results.items():
+        if g_res.flagged:
+            val_to_report = g_res.deviation if g_res.deviation is not None else g_res.current_value
+            msg = generate_feedback(
+                exercise, g_id, val_to_report,
             )
             if msg is not None:
                 messages.append(msg)

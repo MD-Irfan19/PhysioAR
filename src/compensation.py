@@ -51,7 +51,8 @@ is None), all flags are False and all deviations are None.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 from typing import Optional
 
 from src.calibration import CalibrationResult, MetricBaseline
@@ -63,8 +64,10 @@ from src.config import (
     LATERAL_TRUNK_LEAN_FLOOR,
     HIP_HIKE_FLOOR,
     SHOULDER_SUBSTITUTION_FLOOR,
+    LANDMARK_VISIBILITY_THRESHOLD,
 )
 from src.metrics.posture import PostureMetrics
+from src.exercises.base import CheckCondition, GenericCompensationCheck, RepState
 
 
 # ============================================================
@@ -219,6 +222,21 @@ class CompensationResult:
     hip_hike: CompensationMetricResult = None
     trunk_lean: CompensationMetricResult = None
     shoulder_substitution: CompensationMetricResult = None
+    generic_results: dict[str, GenericCompensationResult] = field(default_factory=dict)
+
+@dataclass
+class GenericCompensationResult:
+    """Result of evaluating a generic compensation check."""
+    id: str
+    condition: CheckCondition
+    flagged: bool = False
+    current_value: Optional[float] = None
+    threshold_used: Optional[float] = None
+    baseline_mean: Optional[float] = None
+    deviation: Optional[float] = None
+    phase_used: Optional[RepState] = None
+    lower_bound_used: Optional[float] = None
+    upper_bound_used: Optional[float] = None
 
 
 # ============================================================
@@ -295,3 +313,106 @@ def evaluate_compensation(
             SHOULDER_SUBSTITUTION_FLOOR,
         ),
     )
+
+
+def evaluate_generic_checks(
+    checks: list[GenericCompensationCheck],
+    posture: PostureMetrics,
+    calibration_result: Optional[CalibrationResult],
+    smoothed_landmarks: list,
+    side: str,
+    visibility_threshold: float,
+    current_phase: RepState,
+) -> dict[str, GenericCompensationResult]:
+    """Evaluate generic compensation checks."""
+    results = {}
+    
+    for check in checks:
+        # Phase gating
+        if check.allowed_phases is not None:
+            if current_phase not in check.allowed_phases:
+                # Phase not matched, skip evaluation
+                continue
+                
+        # Calculate or map the metric
+        current_val = None
+        if check.metric_calculator is not None:
+            try:
+                current_val = check.metric_calculator(smoothed_landmarks, side=side, visibility_threshold=visibility_threshold)
+            except Exception:
+                current_val = None
+        else:
+            # If no calculator, we could map from PostureMetrics, but for now 
+            # we rely on the calculator or it's unmapped.
+            # To support legacy mapping if requested, we could check hasattr(posture, check.id).
+            # But the prompt says "rely on existing mapped metric if None".
+            if hasattr(posture, check.id):
+                current_val = getattr(posture, check.id)
+            else:
+                # E.g. torso_lean -> trunk_lean fallback, etc.
+                pass
+                
+        if current_val is None or not math.isfinite(current_val):
+            results[check.id] = GenericCompensationResult(
+                id=check.id, condition=check.condition, flagged=False, phase_used=current_phase
+            )
+            continue
+            
+        flagged = False
+        threshold_used = None
+        deviation = None
+        baseline_mean = None
+        lower_bound = None
+        upper_bound = None
+        
+        if check.condition == CheckCondition.ABOVE:
+            threshold_used = check.upper_threshold
+            flagged = current_val > threshold_used
+            
+        elif check.condition == CheckCondition.BELOW:
+            threshold_used = check.lower_threshold
+            flagged = current_val < threshold_used
+            
+        elif check.condition == CheckCondition.RANGE:
+            lower_bound = check.lower_threshold
+            upper_bound = check.upper_threshold
+            flagged = current_val < lower_bound or current_val > upper_bound
+            
+        elif check.condition == CheckCondition.BASELINE_DEVIATION:
+            # Lookup baseline
+            if calibration_result is None or not hasattr(calibration_result, check.id):
+                # Cannot evaluate without baseline
+                results[check.id] = GenericCompensationResult(
+                    id=check.id, condition=check.condition, flagged=False, phase_used=current_phase
+                )
+                continue
+                
+            baseline = getattr(calibration_result, check.id)
+            if baseline is None:
+                results[check.id] = GenericCompensationResult(
+                    id=check.id, condition=check.condition, flagged=False, phase_used=current_phase
+                )
+                continue
+                
+            # Default floor for unknown baseline deviation checks
+            floor = 0.0
+            deviation = compute_deviation(current_val, baseline.mean)
+            threshold_used = compute_threshold(baseline.std, floor)
+            baseline_mean = baseline.mean
+            flagged = deviation > threshold_used
+            
+        results[check.id] = GenericCompensationResult(
+            id=check.id,
+            condition=check.condition,
+            flagged=flagged,
+            current_value=current_val,
+            threshold_used=threshold_used,
+            baseline_mean=baseline_mean,
+            deviation=deviation,
+            phase_used=current_phase,
+            lower_bound_used=lower_bound,
+            upper_bound_used=upper_bound,
+        )
+        
+    return results
+

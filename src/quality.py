@@ -75,7 +75,7 @@ NONE / MISSING DATA
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from src.compensation import CompensationResult
@@ -153,6 +153,8 @@ class FrameSample:
     lateral_trunk_lean_deviation: Optional[float] = None
     hip_hike_deviation: Optional[float] = None
     trunk_lean_deviation: Optional[float] = None
+    generic_flags: dict[str, bool] = field(default_factory=dict)
+    generic_deviations: dict[str, float] = field(default_factory=dict)
 
 
 # ============================================================
@@ -429,6 +431,10 @@ def _compute_avg_alignment_deviation_ratio(
             )
         if s.trunk_lean_deviation is not None:
             ratios.append(s.trunk_lean_deviation / normalization_constant)
+            
+        for dev in s.generic_deviations.values():
+            if dev is not None:
+                ratios.append(dev / normalization_constant)
 
     if not ratios:
         return None
@@ -448,10 +454,17 @@ def _count_distinct_compensations(samples: list[FrameSample]) -> int:
     lat_lean_flagged = any(s.lateral_trunk_lean_flagged for s in samples)
     hip_hike_flagged = any(s.hip_hike_flagged for s in samples)
     trunk_lean_flagged = any(s.trunk_lean_flagged for s in samples)
+    
+    generic_flagged_ids = set()
+    for s in samples:
+        for check_id, is_flagged in s.generic_flags.items():
+            if is_flagged:
+                generic_flagged_ids.add(check_id)
+                
     return sum([
         torso_flagged, shoulder_flagged, neck_flagged, hip_flagged, lat_lean_flagged,
         hip_hike_flagged, trunk_lean_flagged
-    ])
+    ]) + len(generic_flagged_ids)
 
 
 # ============================================================

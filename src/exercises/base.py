@@ -17,7 +17,61 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Optional
+from typing import Callable, Optional, Any
+
+class RepState(Enum):
+    """State machine states for repetition detection.
+    
+    Attributes:
+        WAITING_FOR_START: Initial state; waiting for a valid start/down position.
+        DOWN: Angle is at or below the start threshold.
+        RISING: Angle is between start and end thresholds, moving upward.
+        UP: Angle has reached or exceeded the end threshold.
+        FALLING: Angle has left the top and is returning toward the start threshold.
+    """
+    WAITING_FOR_START = "waiting_for_start"
+    DOWN = "down"
+    RISING = "rising"
+    UP = "up"
+    FALLING = "falling"
+
+class CheckCondition(Enum):
+    """Condition type for a generic compensation check."""
+    BASELINE_DEVIATION = "baseline_deviation"
+    ABOVE = "above"
+    BELOW = "below"
+    RANGE = "range"
+
+@dataclass
+class GenericCompensationCheck:
+    """Declarative definition of a directional or phase-gated check."""
+    id: str
+    condition: CheckCondition
+    
+    # Thresholds
+    upper_threshold: Optional[float] = None
+    lower_threshold: Optional[float] = None
+    
+    # Phase restriction
+    allowed_phases: Optional[set[RepState]] = None
+    
+    # Reusable metric calculator (optional). If None, relies on an existing mapped metric, 
+    # but currently designed to support independent metric calculations.
+    # Signature: metric_calculator(smoothed_landmarks: list, side: str, visibility_threshold: float) -> Optional[float]
+    metric_calculator: Optional[Callable] = None
+    
+    def __post_init__(self):
+        """Validate configuration early."""
+        if self.condition == CheckCondition.ABOVE and self.upper_threshold is None:
+            raise ValueError(f"Check '{self.id}' (ABOVE) requires upper_threshold.")
+        if self.condition == CheckCondition.BELOW and self.lower_threshold is None:
+            raise ValueError(f"Check '{self.id}' (BELOW) requires lower_threshold.")
+        if self.condition == CheckCondition.RANGE:
+            if self.lower_threshold is None or self.upper_threshold is None:
+                raise ValueError(f"Check '{self.id}' (RANGE) requires both thresholds.")
+            if self.lower_threshold > self.upper_threshold:
+                raise ValueError(f"Check '{self.id}' (RANGE) lower_bound must be <= upper_bound.")
+
 
 
 class CameraOrientation(Enum):
@@ -84,3 +138,4 @@ class ExerciseDefinition:
     compensation_checks: list[str] = field(default_factory=list)
     feedback_templates: dict = field(default_factory=dict)
     expected_landmarks: list[str] = field(default_factory=list)
+    generic_checks: list[GenericCompensationCheck] = field(default_factory=list)

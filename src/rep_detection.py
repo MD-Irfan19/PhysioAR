@@ -70,29 +70,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
-from src.exercises.base import ExerciseDefinition
-
-
-class RepState(Enum):
-    """State machine states for repetition detection.
-
-    Attributes:
-        WAITING_FOR_START: Initial state; waiting for a valid
-            start/down position.
-        DOWN: Angle is at or below the start threshold.
-        RISING: Angle is between start and end thresholds,
-            moving upward.
-        UP: Angle has reached or exceeded the end threshold.
-        FALLING: Angle has left the top and is returning toward
-            the start threshold.
-    """
-
-    WAITING_FOR_START = "waiting_for_start"
-    DOWN = "down"
-    RISING = "rising"
-    UP = "up"
-    FALLING = "falling"
-
+from src.exercises.base import ExerciseDefinition, RepState
 
 @dataclass(frozen=True)
 class RepEvent:
