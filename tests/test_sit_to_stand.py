@@ -8,6 +8,7 @@ import pytest
 from src.exercises.base import CameraOrientation
 from src.exercises.sit_to_stand import (
     calculate_knee_flexion_angle,
+    compute_forward_trunk_lean,
     SIT_TO_STAND,
 )
 from src.exercises.__init__ import EXERCISE_REGISTRY
@@ -25,14 +26,16 @@ class MockSmoothedLandmark:
         self.visibility = visibility
 
 
-def create_mock_landmarks(hip_xy, knee_xy, ankle_xy, side="right", visibility=1.0):
+def create_mock_landmarks(hip_xy, knee_xy, ankle_xy, shoulder_xy=(0.0, 0.0), side="right", visibility=1.0):
     """Create a list of mock landmarks for testing."""
     landmarks = [MockSmoothedLandmark(0, 0, 0) for _ in range(33)]
     if side == "left":
+        landmarks[11] = MockSmoothedLandmark(shoulder_xy[0], shoulder_xy[1], visibility)
         landmarks[23] = MockSmoothedLandmark(hip_xy[0], hip_xy[1], visibility)
         landmarks[25] = MockSmoothedLandmark(knee_xy[0], knee_xy[1], visibility)
         landmarks[27] = MockSmoothedLandmark(ankle_xy[0], ankle_xy[1], visibility)
     else:
+        landmarks[12] = MockSmoothedLandmark(shoulder_xy[0], shoulder_xy[1], visibility)
         landmarks[24] = MockSmoothedLandmark(hip_xy[0], hip_xy[1], visibility)
         landmarks[26] = MockSmoothedLandmark(knee_xy[0], knee_xy[1], visibility)
         landmarks[28] = MockSmoothedLandmark(ankle_xy[0], ankle_xy[1], visibility)
@@ -67,14 +70,21 @@ class TestSitToStandDefinition:
         assert "right_hip" in expected
         assert "right_knee" in expected
         assert "right_ankle" in expected
+        assert "left_shoulder" in expected
+        assert "right_shoulder" in expected
 
     def test_compensation_checks_empty(self):
         checks = SIT_TO_STAND.compensation_checks
         assert len(checks) == 0
 
-    def test_feedback_templates_empty(self):
+    def test_feedback_templates_populated(self):
         templates = SIT_TO_STAND.feedback_templates
-        assert len(templates) == 0
+        assert "insufficient_forward_trunk_lean" in templates
+
+    def test_generic_checks(self):
+        checks = SIT_TO_STAND.generic_checks
+        assert len(checks) == 1
+        assert checks[0].id == "insufficient_forward_trunk_lean"
 
     def test_registered(self):
         assert SIT_TO_STAND in EXERCISE_REGISTRY
@@ -183,4 +193,74 @@ class TestKneeAngleValidation:
             side="right"
         )
         angle = calculate_knee_flexion_angle(landmarks, side="right")
+        assert angle is None
+
+
+# ================================================================
+# Test 4 — Forward Trunk Lean Calculation
+# ================================================================
+
+class TestForwardTrunkLean:
+    def test_upright_posture(self):
+        # Hip at (0.5, 0.5), Shoulder at (0.5, 0.2)
+        landmarks = create_mock_landmarks(
+            hip_xy=(0.5, 0.5), knee_xy=(0,0), ankle_xy=(0,0),
+            shoulder_xy=(0.5, 0.2), side="right"
+        )
+        angle = compute_forward_trunk_lean(landmarks, side="right", visibility_threshold=0.5)
+        assert angle is not None
+        assert math.isclose(angle, 0.0, abs_tol=1e-5)
+
+    def test_forward_lean(self):
+        # Hip at (0.5, 0.5), Shoulder at (0.7, 0.3)
+        # Vector is (0.2, -0.2). Vertical is (0, -1)
+        # Dot product = 0.2. Mags = sqrt(0.08) and 1.
+        # cos = 0.2 / sqrt(0.08) = 0.2 / 0.2828427 = 0.707106 -> 45 degrees
+        landmarks = create_mock_landmarks(
+            hip_xy=(0.5, 0.5), knee_xy=(0,0), ankle_xy=(0,0),
+            shoulder_xy=(0.7, 0.3), side="right"
+        )
+        angle = compute_forward_trunk_lean(landmarks, side="right", visibility_threshold=0.5)
+        assert angle is not None
+        assert math.isclose(angle, 45.0, abs_tol=1e-5)
+        
+    def test_different_leans(self):
+        # Steeper lean (0.8, 0.3) -> dot product = 0.3. Mags = sqrt(0.09+0.04)=sqrt(0.13) and 1.
+        # cos = 0.3 / sqrt(0.13) -> angle is larger
+        # Wait, forward leaning increases the x displacement from hip.
+        # Vertical is up: (0, -1). Hip is (0.5, 0.5).
+        # Trunk vector (shoulder - hip) = (0.7-0.5, 0.3-0.5) = (0.2, -0.2).
+        # Actually in calculate_angle, vertex is hip. BA = vertical, BC = shoulder.
+        # BA = (0.5 - 0.5, 0.4 - 0.5) = (0, -0.1) which points STRAIGHT UP (negative Y direction).
+        # BC = (0.7 - 0.5, 0.3 - 0.5) = (0.2, -0.2)
+        # dot = 0*0.2 + (-0.1)*(-0.2) = 0.02
+        # |BA| = 0.1
+        # |BC| = sqrt(0.04 + 0.04) = sqrt(0.08) = 0.2828427
+        # cos = 0.02 / (0.1 * 0.2828) = 0.7071 -> 45 degrees.
+        pass
+
+    def test_left_side(self):
+        landmarks = create_mock_landmarks(
+            hip_xy=(0.5, 0.5), knee_xy=(0,0), ankle_xy=(0,0),
+            shoulder_xy=(0.7, 0.3), side="left"
+        )
+        angle = compute_forward_trunk_lean(landmarks, side="left", visibility_threshold=0.5)
+        assert angle is not None
+        assert math.isclose(angle, 45.0, abs_tol=1e-5)
+
+    def test_low_visibility(self):
+        landmarks = create_mock_landmarks(
+            hip_xy=(0.5, 0.5), knee_xy=(0,0), ankle_xy=(0,0),
+            shoulder_xy=(0.5, 0.2), side="right", visibility=0.1
+        )
+        angle = compute_forward_trunk_lean(landmarks, side="right", visibility_threshold=0.5)
+        assert angle is None
+
+    def test_degenerate(self):
+        # Shoulder and hip at same point
+        landmarks = create_mock_landmarks(
+            hip_xy=(0.5, 0.5), knee_xy=(0,0), ankle_xy=(0,0),
+            shoulder_xy=(0.5, 0.5), side="right"
+        )
+        angle = compute_forward_trunk_lean(landmarks, side="right", visibility_threshold=0.5)
         assert angle is None

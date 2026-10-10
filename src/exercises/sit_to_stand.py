@@ -10,6 +10,8 @@ from src.exercises.base import ExerciseDefinition, CameraOrientation
 from src.utils.geometry import calculate_angle
 
 # MediaPipe Pose Landmark Indices
+LEFT_SHOULDER = 11
+RIGHT_SHOULDER = 12
 LEFT_HIP = 23
 RIGHT_HIP = 24
 LEFT_KNEE = 25
@@ -77,6 +79,60 @@ def calculate_knee_flexion_angle(
         return None
 
 
+def compute_forward_trunk_lean(
+    smoothed_landmarks: list,
+    side: str,
+    visibility_threshold: float,
+) -> Optional[float]:
+    """Calculate forward trunk inclination relative to vertical.
+
+    Measures the angle between the vertical axis and the trunk
+    (hip to shoulder) using the side-facing camera view.
+    0 degrees = perfectly upright.
+    Increasing values = leaning forward.
+
+    Args:
+        smoothed_landmarks: List of SmoothedLandmark objects.
+        side: "left" or "right".
+        visibility_threshold: Minimum required confidence.
+
+    Returns:
+        The forward inclination angle in degrees, or None if invalid.
+    """
+    if side == "left":
+        shoulder_idx = LEFT_SHOULDER
+        hip_idx = LEFT_HIP
+    elif side == "right":
+        shoulder_idx = RIGHT_SHOULDER
+        hip_idx = RIGHT_HIP
+    else:
+        return None
+
+    if max(shoulder_idx, hip_idx) >= len(smoothed_landmarks):
+        return None
+
+    sh = smoothed_landmarks[shoulder_idx]
+    hp = smoothed_landmarks[hip_idx]
+
+    if sh.visibility < visibility_threshold or hp.visibility < visibility_threshold:
+        return None
+
+    # Vertex is at the hip.
+    # Vertical reference point is directly above the hip (y is smaller in image coordinates).
+    vertical_pt = (hp.x, hp.y - 1.0)
+    hip_pt = (hp.x, hp.y)
+    shoulder_pt = (sh.x, sh.y)
+
+    try:
+        # Angle between vertical (straight up) and the trunk (hip to shoulder)
+        angle = calculate_angle(vertical_pt, hip_pt, shoulder_pt)
+        return angle
+    except ValueError:
+        return None
+
+
+from src.exercises.base import GenericCompensationCheck, CheckCondition, RepState
+
 SIT_TO_STAND = ExerciseDefinition(
     name="Sit to Stand",
     camera_orientation=CameraOrientation.SIDE,
@@ -92,7 +148,20 @@ SIT_TO_STAND = ExerciseDefinition(
         "right_hip",
         "right_knee",
         "right_ankle",
+        "left_shoulder",
+        "right_shoulder",
     ],
     compensation_checks=[],
-    feedback_templates={},
+    generic_checks=[
+        GenericCompensationCheck(
+            id="insufficient_forward_trunk_lean",
+            condition=CheckCondition.BELOW,
+            lower_threshold=25.0,  # Provisional engineering/MVP threshold for insufficient lean
+            allowed_phases={RepState.RISING},
+            metric_calculator=compute_forward_trunk_lean,
+        )
+    ],
+    feedback_templates={
+        "insufficient_forward_trunk_lean": "Lean forward more during the rising phase (current lean: {value})."
+    },
 )
