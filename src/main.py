@@ -373,7 +373,7 @@ def main() -> None:
         print()
 
         # --- Initial calibration ---
-        calibration_result = _attempt_calibration(camera, pose_estimator)
+        calibration_result = _attempt_calibration(camera, pose_estimator, side)
 
         # --- Live visualization loop ---
         _print_live_mode_instructions()
@@ -403,13 +403,10 @@ def main() -> None:
             if result.pose_detected:
                 posture = compute_posture_metrics(
                     result.smoothed_landmarks,
+                    side=side,
                 )
             else:
-                posture = PostureMetrics(
-                    torso_lean=None,
-                    shoulder_height_difference=None,
-                    neck_tilt=None,
-                )
+                posture = PostureMetrics()
 
             # Phase 4B — evaluate and display compensation flags.
             comp = evaluate_compensation(posture, calibration_result)
@@ -565,7 +562,7 @@ def main() -> None:
                 break
             elif key == ord("r") or key == ord("R"):
                 # --- Runtime recalibration ---
-                new_result = _attempt_calibration(camera, pose_estimator)
+                new_result = _attempt_calibration(camera, pose_estimator, side)
                 if new_result is not None:
                     calibration_result = new_result
                     # Phase 5 — reset rep detector on successful recalibration.
@@ -594,10 +591,10 @@ def main() -> None:
         cv2.destroyAllWindows()
 
 
-def _attempt_calibration(camera, pose_estimator):
+def _attempt_calibration(camera, pose_estimator, side: str = "right"):
     """Attempt a calibration, returning the result or None on failure."""
     try:
-        return run_calibration(camera, pose_estimator)
+        return run_calibration(camera, pose_estimator, side=side)
     except RuntimeError as e:
         print(f"Calibration error: {e}")
         print("Continuing without updating calibration baseline.")

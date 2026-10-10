@@ -62,6 +62,7 @@ from src.config import (
     HIP_ROTATION_FLOOR,
     LATERAL_TRUNK_LEAN_FLOOR,
     HIP_HIKE_FLOOR,
+    SHOULDER_SUBSTITUTION_FLOOR,
 )
 from src.metrics.posture import PostureMetrics
 
@@ -111,13 +112,13 @@ def compute_threshold(
 
 def evaluate_metric(
     current_value: Optional[float],
-    baseline: MetricBaseline,
+    baseline: Optional[MetricBaseline],
     fixed_floor: float,
 ) -> CompensationMetricResult:
     """Evaluate a single metric against its calibration baseline.
 
-    If current_value is None, returns an unavailable result
-    (flagged=False, deviation=None, threshold still computed).
+    If current_value or baseline is None, returns an unavailable result
+    (flagged=False).
 
     The flagging rule is strict >:
         flagged = deviation > threshold
@@ -125,12 +126,22 @@ def evaluate_metric(
     Args:
         current_value: The current metric value, or None if
             unavailable.
-        baseline: The MetricBaseline (mean, std) from calibration.
+        baseline: The MetricBaseline (mean, std) from calibration, or None.
         fixed_floor: The minimum threshold floor from config.
 
     Returns:
         A CompensationMetricResult with all intermediate values.
     """
+    if baseline is None:
+        return CompensationMetricResult(
+            current_value=current_value,
+            baseline_mean=0.0,
+            baseline_std=0.0,
+            deviation=None,
+            threshold=fixed_floor,
+            flagged=False,
+        )
+
     threshold = compute_threshold(baseline.std, fixed_floor)
 
     if current_value is None:
@@ -207,6 +218,7 @@ class CompensationResult:
     lateral_trunk_lean: CompensationMetricResult = None
     hip_hike: CompensationMetricResult = None
     trunk_lean: CompensationMetricResult = None
+    shoulder_substitution: CompensationMetricResult = None
 
 
 # ============================================================
@@ -276,5 +288,10 @@ def evaluate_compensation(
             posture.trunk_lean,
             calibration_result.lateral_trunk_lean,
             LATERAL_TRUNK_LEAN_FLOOR,
+        ),
+        shoulder_substitution=evaluate_metric(
+            posture.shoulder_substitution,
+            calibration_result.shoulder_substitution,
+            SHOULDER_SUBSTITUTION_FLOOR,
         ),
     )

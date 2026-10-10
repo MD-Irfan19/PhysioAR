@@ -12,6 +12,7 @@ from src.exercises.base import CameraOrientation, ExerciseDefinition
 from src.exercises.shoulder_abduction import SHOULDER_ABDUCTION
 from src.exercises.seated_knee_extension import SEATED_KNEE_EXTENSION
 from src.exercises.standing_hip_abduction import STANDING_HIP_ABDUCTION
+from src.exercises.elbow_flexion_extension import ELBOW_FLEXION_EXTENSION
 
 # Central registry of all available exercises.
 # New exercises should be appended here.
@@ -19,6 +20,7 @@ EXERCISE_REGISTRY: list[ExerciseDefinition] = [
     SHOULDER_ABDUCTION,
     SEATED_KNEE_EXTENSION,
     STANDING_HIP_ABDUCTION,
+    ELBOW_FLEXION_EXTENSION,
 ]
 
 __all__ = [
@@ -28,4 +30,5 @@ __all__ = [
     "SHOULDER_ABDUCTION",
     "SEATED_KNEE_EXTENSION",
     "STANDING_HIP_ABDUCTION",
+    "ELBOW_FLEXION_EXTENSION",
 ]

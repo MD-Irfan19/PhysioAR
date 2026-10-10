@@ -64,6 +64,8 @@ from src.utils.geometry import calculate_angle, calculate_midpoint
 NOSE = 0
 LEFT_SHOULDER = 11
 RIGHT_SHOULDER = 12
+LEFT_ELBOW = 13
+RIGHT_ELBOW = 14
 LEFT_HIP = 23
 RIGHT_HIP = 24
 
@@ -126,6 +128,7 @@ class CalibrationResult:
     hip_alignment: MetricBaseline = None
     hip_rotation: MetricBaseline = None
     lateral_trunk_lean: MetricBaseline = None
+    shoulder_substitution: MetricBaseline = None
     valid_samples: int = 0
     skipped_samples: int = 0
     duration_seconds: float = 0.0
@@ -255,6 +258,30 @@ def compute_shoulder_height_difference(
     return abs(left_shoulder_xy[1] - right_shoulder_xy[1])
 
 
+def compute_upper_arm_angle(
+    shoulder_xy: tuple[float, float],
+    elbow_xy: tuple[float, float],
+) -> float:
+    """Calculate the 2D upper arm orientation angle in degrees.
+    
+    The angle is calculated using atan2 with the vector:
+    elbow - shoulder.
+    Result is in [-180, 180].
+    
+    Args:
+        shoulder_xy: (x, y) of the shoulder.
+        elbow_xy: (x, y) of the elbow.
+        
+    Returns:
+        Upper arm orientation angle in degrees.
+    """
+    dx = elbow_xy[0] - shoulder_xy[0]
+    dy = elbow_xy[1] - shoulder_xy[1]
+    if dx == 0 and dy == 0:
+        raise ValueError("Degenerate geometry")
+    return math.degrees(math.atan2(dy, dx))
+
+
 def compute_neck_tilt(
     left_shoulder_xy: tuple[float, float],
     right_shoulder_xy: tuple[float, float],
@@ -373,7 +400,8 @@ def compute_lateral_trunk_lean(
 def compute_frame_metrics(
     smoothed_landmarks: list,
     visibility_threshold: float | None = None,
-) -> tuple[float, float, float, float, float, float] | None:
+    side: str = "right",
+) -> tuple[float, float, float, float, float, float, float | None] | None:
     """Compute all four posture metrics from a single frame's smoothed landmarks.
 
     Performs landmark validity checking BEFORE metric calculation:
@@ -409,6 +437,27 @@ def compute_frame_metrics(
     if reasons:
         return None
 
+    # Determine elbow for shoulder substitution (optional, allowed to be None).
+    elbow_visible = False
+    upper_arm_angle = None
+    
+    if side == "left":
+        shoulder_idx, elbow_idx = LEFT_SHOULDER, LEFT_ELBOW
+    else:
+        shoulder_idx, elbow_idx = RIGHT_SHOULDER, RIGHT_ELBOW
+        
+    try:
+        sh_lm = smoothed_landmarks[shoulder_idx]
+        el_lm = smoothed_landmarks[elbow_idx]
+        eff_threshold = visibility_threshold if visibility_threshold is not None else 0.5
+        if (
+            sh_lm.visibility >= eff_threshold
+            and el_lm.visibility >= eff_threshold
+        ):
+            upper_arm_angle = compute_upper_arm_angle((sh_lm.x, sh_lm.y), (el_lm.x, el_lm.y))
+    except (IndexError, ValueError):
+        pass
+
     # Step 3-6: Calculate metrics (geometry errors caught).
     try:
         nose = smoothed_landmarks[NOSE]
@@ -430,7 +479,7 @@ def compute_frame_metrics(
         hip_rot = compute_hip_rotation(l_hip_xy, r_hip_xy)
         lat_lean = compute_lateral_trunk_lean(l_shoulder_xy, r_shoulder_xy, l_hip_xy, r_hip_xy)
 
-        return (spine, shoulder, neck, hip, hip_rot, lat_lean)
+        return (spine, shoulder, neck, hip, hip_rot, lat_lean, upper_arm_angle)
 
     except (ValueError, IndexError, AttributeError):
         # Degenerate geometry or missing data — skip the frame.
@@ -448,6 +497,7 @@ def run_calibration(
     duration_seconds: float | None = None,
     min_samples: int | None = None,
     visibility_threshold: float | None = None,
+    side: str = "right",
 ) -> CalibrationResult:
     """Run the neutral-posture calibration capture.
 
@@ -499,6 +549,7 @@ def run_calibration(
     hip_values: list[float] = []
     hip_rot_values: list[float] = []
     lat_lean_values: list[float] = []
+    shoulder_substitution_values: list[float] = []
 
     valid_count = 0
     skipped_count = 0
@@ -603,6 +654,7 @@ def run_calibration(
         metrics = compute_frame_metrics(
             result.smoothed_landmarks,
             visibility_threshold=visibility_threshold,
+            side=side,
         )
 
         if metrics is None:
@@ -612,13 +664,15 @@ def run_calibration(
                 skip_reason_counts.get("degenerate_geometry", 0) + 1
             )
         else:
-            spine, shoulder, neck, hip, hip_rot, lat_lean = metrics
+            spine, shoulder, neck, hip, hip_rot, lat_lean, upper_arm = metrics
             spine_values.append(spine)
             shoulder_values.append(shoulder)
             neck_values.append(neck)
             hip_values.append(hip)
             hip_rot_values.append(hip_rot)
             lat_lean_values.append(lat_lean)
+            if upper_arm is not None:
+                shoulder_substitution_values.append(upper_arm)
             valid_count += 1
 
             # Per-frame diagnostic output.
@@ -688,6 +742,13 @@ def run_calibration(
         lateral_trunk_lean=MetricBaseline(
             mean=statistics.mean(lat_lean_values),
             std=statistics.stdev(lat_lean_values),
+        ),
+        shoulder_substitution=(
+            MetricBaseline(
+                mean=statistics.mean(shoulder_substitution_values),
+                std=statistics.stdev(shoulder_substitution_values),
+            )
+            if len(shoulder_substitution_values) > 1 else None
         ),
         valid_samples=valid_count,
         skipped_samples=skipped_count,

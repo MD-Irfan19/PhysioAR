@@ -102,6 +102,9 @@ from src.calibration import (
     compute_hip_rotation,
     compute_lateral_trunk_lean,
     compute_hip_alignment,
+    compute_upper_arm_angle,
+    LEFT_ELBOW,
+    RIGHT_ELBOW,
 )
 from src.config import LANDMARK_VISIBILITY_THRESHOLD
 
@@ -137,6 +140,7 @@ class PostureMetrics:
     lateral_trunk_lean: Optional[float] = None
     hip_hike: Optional[float] = None
     trunk_lean: Optional[float] = None
+    shoulder_substitution: Optional[float] = None
 
 
 def _get_landmark_xy(
@@ -369,6 +373,7 @@ def compute_hip_hike_metric(
 def compute_posture_metrics(
     smoothed_landmarks: list,
     visibility_threshold: float | None = None,
+    side: str = "right",
 ) -> PostureMetrics:
     """Compute all posture metrics for a single frame.
 
@@ -392,9 +397,28 @@ def compute_posture_metrics(
         Any value may be None if the required landmarks are
         unavailable.
     """
+    if visibility_threshold is None:
+        visibility_threshold = LANDMARK_VISIBILITY_THRESHOLD
+
     lat_lean = compute_lateral_trunk_lean_metric(
         smoothed_landmarks, visibility_threshold,
     )
+    
+    # Compute shoulder_substitution
+    shoulder_substitution = None
+    if side == "left":
+        sh_idx, el_idx = LEFT_SHOULDER, LEFT_ELBOW
+    else:
+        sh_idx, el_idx = RIGHT_SHOULDER, RIGHT_ELBOW
+        
+    sh_lm = _get_landmark_xy(smoothed_landmarks, sh_idx, visibility_threshold)
+    el_lm = _get_landmark_xy(smoothed_landmarks, el_idx, visibility_threshold)
+    if sh_lm is not None and el_lm is not None:
+        try:
+            shoulder_substitution = compute_upper_arm_angle(sh_lm, el_lm)
+        except ValueError:
+            pass
+
     return PostureMetrics(
         torso_lean=compute_torso_lean(
             smoothed_landmarks, visibility_threshold,
@@ -413,4 +437,5 @@ def compute_posture_metrics(
         hip_hike=compute_hip_hike_metric(
             smoothed_landmarks, visibility_threshold,
         ),
+        shoulder_substitution=shoulder_substitution,
     )

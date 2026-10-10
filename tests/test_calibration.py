@@ -392,7 +392,7 @@ class TestComputeFrameMetrics:
         result = compute_frame_metrics(landmarks)
         assert result is not None
 
-        spine, shoulder, neck, hip, hip_rot, lat_lean = result
+        spine, shoulder, neck, hip, hip_rot, lat_lean, upper_arm = result
         assert spine == pytest.approx(0.0, abs=0.1)
         assert shoulder == pytest.approx(0.0)
         assert neck == pytest.approx(0.0, abs=0.1)
@@ -410,7 +410,7 @@ class TestComputeFrameMetrics:
         result = compute_frame_metrics(landmarks)
         assert result is not None
 
-        _, shoulder, _, _, _, _ = result
+        _, shoulder, _, _, _, _, _ = result
         assert shoulder == pytest.approx(0.04)
 
     def test_asymmetric_hips(self):
@@ -425,7 +425,7 @@ class TestComputeFrameMetrics:
         result = compute_frame_metrics(landmarks)
         assert result is not None
 
-        _, _, _, hip, _, _ = result
+        _, _, _, hip, _, _, _ = result
         assert hip == pytest.approx(0.04)
 
 
@@ -706,7 +706,7 @@ class TestAllRequiredLandmarksValid:
         )
         result = compute_frame_metrics(landmarks, visibility_threshold=0.5)
         assert result is not None
-        spine, shoulder, neck, hip, hip_rot, lat_lean = result
+        spine, shoulder, neck, hip, hip_rot, lat_lean, upper_arm = result
         assert isinstance(spine, float)
         assert isinstance(shoulder, float)
         assert isinstance(neck, float)
