@@ -40,6 +40,7 @@ from src.quality import (
 from src.feedback import generate_all_feedback
 from src.utils.geometry import calculate_midpoint
 from src.overlay import draw_hud
+from src.session import ExerciseSessionController
 
 
 # ============================================================
@@ -351,20 +352,15 @@ def main() -> None:
     camera = Camera(camera_index=0)
     pose_estimator = PoseEstimator()
 
+    # Session controller instance
+    controller = ExerciseSessionController(
+        pose_estimator=pose_estimator,
+        camera=camera,
+    )
+    controller.start_session(exercise, side)
+
     # Phase 2.5 diagnostic — debug overlay state (OFF by default).
     debug_overlay_enabled = False
-
-    # Phase 5 — rep detection.
-    rep_detector = RepDetector(exercise)
-    frame_index = 0
-
-    # Phase 6 — frame history and quality tracking.
-    frame_history: deque[FrameSample] = deque(maxlen=_FRAME_HISTORY_MAX)
-    last_quality: QualityResult | None = None
-
-    # Phase 7 — feedback tracking.
-    active_feedback: list[str] = []
-    prev_flagged: set[str] = set()
 
     try:
         camera.open()
@@ -374,6 +370,7 @@ def main() -> None:
 
         # --- Initial calibration ---
         calibration_result = _attempt_calibration(camera, pose_estimator, side)
+        controller.set_calibration(calibration_result)
 
         # --- Live visualization loop ---
         _print_live_mode_instructions()
@@ -385,205 +382,46 @@ def main() -> None:
                 print("Frame capture failed. Exiting.")
                 break
 
-            # Process the frame through MediaPipe Pose Landmarker + EMA.
-            result = pose_estimator.process(frame)
-
-            # Draw pose landmarks and connections if a pose was detected.
-            pose_estimator.draw(frame, result)
-
-            # Phase 3 — compute exercise angle using the definition's
-            # angle_calculator. No exercise-specific branching here.
-            angle = None
-            if result.pose_detected:
-                angle = exercise.angle_calculator(
-                    result.smoothed_landmarks, side,
-                )
-
-            # Phase 4A — compute and display raw posture metrics.
-            if result.pose_detected:
-                posture = compute_posture_metrics(
-                    result.smoothed_landmarks,
-                    side=side,
-                )
-            else:
-                posture = PostureMetrics()
-
-            # Phase 4B — evaluate and display compensation flags.
-            comp = evaluate_compensation(posture, calibration_result)
-
-            generic_results = {}
-            if comp is not None:
-                from src.compensation import evaluate_generic_checks
-                from src.config import LANDMARK_VISIBILITY_THRESHOLD
-                generic_results = evaluate_generic_checks(
-                    exercise.generic_checks,
-                    posture,
-                    calibration_result,
-                    result.smoothed_landmarks,
-                    side,
-                    LANDMARK_VISIBILITY_THRESHOLD,
-                    rep_detector.state,
-                )
-                comp.generic_results = generic_results
-
-            # Phase 7 — generate corrective feedback for flagged compensations.
-            # Only print new feedback when the set of flagged types changes
-            # to avoid per-frame spam.
-            current_flagged: set[str] = set()
-            if comp is not None:
-                for comp_type in ["torso_lean", "shoulder_hike", "neck_tilt", "hip_rotation", "lateral_trunk_lean", "hip_hike", "trunk_lean", "shoulder_substitution"]:
-                    metric_result = getattr(comp, comp_type, None)
-                    if metric_result and metric_result.flagged:
-                        current_flagged.add(comp_type)
-                for g_id, g_res in generic_results.items():
-                    if g_res.flagged:
-                        current_flagged.add(g_id)
-
-            if current_flagged != prev_flagged:
-                active_feedback = generate_all_feedback(exercise, comp)
-                # Print only newly appearing compensations.
-                newly_flagged = current_flagged - prev_flagged
-                if newly_flagged:
-                    new_msgs = []
-                    for comp_type in sorted(newly_flagged):
-                        if comp is not None:
-                            from src.feedback import generate_feedback
-                            if comp_type in generic_results:
-                                g_res = generic_results[comp_type]
-                                val = g_res.deviation if g_res.deviation is not None else g_res.current_value
-                                msg = generate_feedback(exercise, comp_type, val)
-                            else:
-                                metric = getattr(comp, comp_type, None)
-                                if metric and metric.deviation is not None:
-                                    msg = generate_feedback(
-                                        exercise, comp_type, metric.deviation,
-                                    )
-                                else:
-                                    msg = None
-                            if msg:
-                                new_msgs.append(msg)
-                    for msg in new_msgs:
-                        print(f"  FEEDBACK: {msg}")
-                prev_flagged = current_flagged
-            elif not current_flagged:
-                active_feedback = []
-
-            # Phase 6 — record frame sample for quality scoring.
-            sample = FrameSample(
-                frame_index=frame_index,
-                angle=angle,
-                torso_lean=posture.torso_lean,
-                shoulder_height_diff=posture.shoulder_height_difference,
-                neck_tilt=posture.neck_tilt,
-                torso_lean_flagged=(
-                    comp.torso_lean.flagged if comp is not None else False
-                ),
-                shoulder_hike_flagged=(
-                    comp.shoulder_hike.flagged if comp is not None else False
-                ),
-                neck_tilt_flagged=(
-                    comp.neck_tilt.flagged if comp is not None else False
-                ),
-                hip_rotation_flagged=(
-                    comp.hip_rotation.flagged if comp is not None else False
-                ),
-                lateral_trunk_lean_flagged=(
-                    comp.lateral_trunk_lean.flagged if comp is not None else False
-                ),
-                hip_hike_flagged=(
-                    comp.hip_hike.flagged if comp is not None else False
-                ),
-                trunk_lean_flagged=(
-                    comp.trunk_lean.flagged if comp is not None else False
-                ),
-                torso_deviation=(
-                    comp.torso_lean.deviation if comp is not None else None
-                ),
-                shoulder_deviation=(
-                    comp.shoulder_hike.deviation if comp is not None else None
-                ),
-                neck_deviation=(
-                    comp.neck_tilt.deviation if comp is not None else None
-                ),
-                hip_rotation_deviation=(
-                    comp.hip_rotation.deviation if comp is not None else None
-                ),
-                lateral_trunk_lean_deviation=(
-                    comp.lateral_trunk_lean.deviation if comp is not None else None
-                ),
-                hip_hike_deviation=(
-                    comp.hip_hike.deviation if comp is not None else None
-                ),
-                trunk_lean_deviation=(
-                    comp.trunk_lean.deviation if comp is not None else None
-                ),
-                generic_flags={k: v.flagged for k, v in generic_results.items()},
-                generic_deviations={k: v.deviation for k, v in generic_results.items() if v.deviation is not None},
-            )
-            frame_history.append(sample)
-
-            # Phase 5 — update rep detector with current angle.
-            rep_event = rep_detector.update(
-                angle, frame_index=frame_index,
-            )
-            if rep_event is not None:
-                # Phase 6 — evaluate quality for the completed rep.
-                last_quality = evaluate_rep_quality(
-                    rep_number=rep_event.rep_number,
-                    frame_history=list(frame_history),
-                    start_frame=rep_event.start_frame,
-                    top_frame=rep_event.top_frame,
-                    end_frame=rep_event.end_frame,
-                    target_rom=exercise.rom_target,
-                )
-                print(f"  REP {rep_event.rep_number} COMPLETE")
-                if rep_event.start_frame is not None:
-                    print(f"    Start frame: {rep_event.start_frame}")
-                if rep_event.top_frame is not None:
-                    print(f"    Top frame:   {rep_event.top_frame}")
-                if rep_event.end_frame is not None:
-                    print(f"    End frame:   {rep_event.end_frame}")
-                print(f"    Quality:")
-                print(f"      ROM:          {last_quality.rom_score:.1f}")
-                print(f"      Alignment:    {last_quality.alignment_score:.1f}")
-                print(f"      Stability:    {last_quality.stability_score:.1f}")
-                print(f"      Compensation: {last_quality.compensation_score:.1f}")
-                print(f"      Overall:      {last_quality.overall_score:.1f}")
-
-            # Phase 8 — Draw complete HUD overlay.
-            draw_hud(
+            # Delegate single-frame processing to the controller
+            res = controller.process_frame(
                 frame,
-                angle=angle,
-                target_rom=exercise.rom_target,
-                rep_state=rep_detector.state.value.upper(),
-                rep_count=rep_detector.rep_count,
-                feedback_messages=active_feedback,
-                side=side,
+                render_overlay=True,
+                draw_debug=debug_overlay_enabled,
             )
 
-            frame_index += 1
+            # Print newly appearing feedback messages
+            if res.new_feedback_messages:
+                for msg in res.new_feedback_messages:
+                    print(f"  FEEDBACK: {msg}")
 
-            # Phase 2.5 diagnostic — draw debug overlay if enabled.
-            if debug_overlay_enabled and result.pose_detected:
-                _draw_debug_overlay(frame, result.smoothed_landmarks)
-            elif debug_overlay_enabled and not result.pose_detected:
-                h, w = frame.shape[:2]
-                cv2.putText(
-                    frame, "Debug: ON (no pose detected)",
-                    (w - 300, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                    (0, 0, 255), 2,
-                )
+            # Print rep completion information
+            if res.rep_event is not None and res.snapshot.latest_quality is not None:
+                q = res.snapshot.latest_quality
+                print(f"  REP {res.rep_event.rep_number} COMPLETE")
+                if res.rep_event.start_frame is not None:
+                    print(f"    Start frame: {res.rep_event.start_frame}")
+                if res.rep_event.top_frame is not None:
+                    print(f"    Top frame:   {res.rep_event.top_frame}")
+                if res.rep_event.end_frame is not None:
+                    print(f"    End frame:   {res.rep_event.end_frame}")
+                print(f"    Quality:")
+                print(f"      ROM:          {q['rom_score']:.1f}")
+                print(f"      Alignment:    {q['alignment_score']:.1f}")
+                print(f"      Stability:    {q['stability_score']:.1f}")
+                print(f"      Compensation: {q['compensation_score']:.1f}")
+                print(f"      Overall:      {q['overall_score']:.1f}")
 
-            # Live mode overlay.
+            # Live mode control prompt overlay
+            display_frame = res.annotated_frame if res.annotated_frame is not None else frame
             cv2.putText(
-                frame, "D: Debug | R: Recalibrate | Q: Quit",
+                display_frame, "D: Debug | R: Recalibrate | Q: Quit",
                 (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1,
             )
 
-            # Display the annotated frame.
-            cv2.imshow("PhysioAR", frame)
+            # Display the annotated frame
+            cv2.imshow("PhysioAR", display_frame)
 
-            # Handle key presses.
+            # Handle key presses
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q") or key == ord("Q"):
                 break
@@ -591,15 +429,8 @@ def main() -> None:
                 # --- Runtime recalibration ---
                 new_result = _attempt_calibration(camera, pose_estimator, side)
                 if new_result is not None:
-                    calibration_result = new_result
-                    # Phase 5 — reset rep detector on successful recalibration.
-                    rep_detector.reset()
-                    # Phase 6 — clear frame history and quality on recalibration.
-                    frame_history.clear()
-                    last_quality = None
-                    # Phase 7 — clear feedback on recalibration.
-                    active_feedback = []
-                    prev_flagged = set()
+                    controller.set_calibration(new_result)
+                    controller.reset_session_data()
                     print("  Rep detector reset. Quality/feedback cleared.")
                 else:
                     print("Previous calibration preserved.")
@@ -607,14 +438,13 @@ def main() -> None:
                 _print_live_mode_instructions()
 
             elif key == ord("d") or key == ord("D"):
-                # Phase 2.5 diagnostic — toggle debug overlay.
+                # Phase 2.5 diagnostic — toggle debug overlay
                 debug_overlay_enabled = not debug_overlay_enabled
                 state = "ON" if debug_overlay_enabled else "OFF"
                 print(f"  Landmark debug overlay: {state}")
 
     finally:
-        pose_estimator.close()
-        camera.release()
+        controller.stop_session()
         cv2.destroyAllWindows()
 
 

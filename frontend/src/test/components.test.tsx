@@ -1,0 +1,263 @@
+import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { MetricCards } from '@/components/metrics/MetricCards'
+import { FeedbackPanel } from '@/components/feedback/FeedbackPanel'
+import { QualitySummary } from '@/components/metrics/QualitySummary'
+import { VideoFeed } from '@/components/video/VideoFeed'
+import { SessionSetup } from '@/components/session/SessionSetup'
+import type { SessionSnapshot } from '@/types'
+
+describe('PhysioAR UI Components', () => {
+  describe('MetricCards Component', () => {
+    it('1. renders dashes ("—") for null/unavailable values rather than misleading zeros', () => {
+      const emptySnapshot: SessionSnapshot = {
+        status: 'idle',
+        exercise_name: null,
+        exercise_id: null,
+        side: null,
+        selected_side: null,
+        camera_orientation: null,
+        is_calibrated: false,
+        calibration_status: 'not_calibrated',
+        calibration_error: null,
+        calibration_samples: 0,
+        calibration_baseline: null,
+        pose_detected: false,
+        current_angle: null,
+        joint_angle: null,
+        rep_state: null,
+        rep_phase: null,
+        rep_count: 0,
+        rom_target: null,
+        rom_progress: null,
+        active_compensation_ids: [],
+        feedback_messages: [],
+        latest_quality: null,
+        last_error: null,
+        frame_index: 0,
+      }
+
+      render(<MetricCards snapshot={emptySnapshot} />)
+
+      // Angle should be "—"
+      const dashes = screen.getAllByText('—')
+      expect(dashes.length).toBeGreaterThanOrEqual(2) // Joint angle and ROM progress
+      expect(screen.getByText('0')).toBeInTheDocument() // Rep count is 0
+    })
+
+    it('2. correctly formats populated joint angles and percentages', () => {
+      const activeSnapshot: SessionSnapshot = {
+        status: 'active',
+        exercise_name: 'Shoulder Abduction',
+        exercise_id: 'shoulder_abduction',
+        side: 'right',
+        selected_side: 'right',
+        camera_orientation: 'front',
+        is_calibrated: true,
+        calibration_status: 'calibrated',
+        calibration_error: null,
+        calibration_samples: 30,
+        calibration_baseline: null,
+        pose_detected: true,
+        current_angle: 82.4,
+        joint_angle: 82.4,
+        rep_state: 'rising',
+        rep_phase: 'rising',
+        rep_count: 4,
+        rom_target: 90.0,
+        rom_progress: 0.915,
+        active_compensation_ids: [],
+        feedback_messages: [],
+        latest_quality: null,
+        last_error: null,
+        frame_index: 120,
+      }
+
+      render(<MetricCards snapshot={activeSnapshot} />)
+
+      expect(screen.getByText('82.4')).toBeInTheDocument()
+      expect(screen.getByText('4')).toBeInTheDocument()
+      expect(screen.getByText('92%')).toBeInTheDocument()
+      expect(screen.getByText('Baseline Active')).toBeInTheDocument()
+    })
+  })
+
+  describe('FeedbackPanel Component', () => {
+    it('3. renders active compensations with friendly clinical labels and warning cues', () => {
+      const compSnapshot: SessionSnapshot = {
+        status: 'active',
+        exercise_name: 'Shoulder Abduction',
+        exercise_id: 'shoulder_abduction',
+        side: 'right',
+        selected_side: 'right',
+        camera_orientation: 'front',
+        is_calibrated: true,
+        calibration_status: 'calibrated',
+        calibration_error: null,
+        calibration_samples: 30,
+        calibration_baseline: null,
+        pose_detected: true,
+        current_angle: 60.0,
+        joint_angle: 60.0,
+        rep_state: 'rising',
+        rep_phase: 'rising',
+        rep_count: 1,
+        rom_target: 90.0,
+        rom_progress: 0.66,
+        active_compensation_ids: ['torso_lean', 'shoulder_hike'],
+        feedback_messages: ['Keep your shoulders level'],
+        latest_quality: null,
+        last_error: null,
+        frame_index: 80,
+      }
+
+      render(<FeedbackPanel snapshot={compSnapshot} />)
+
+      expect(screen.getByText('Torso Lateral Lean')).toBeInTheDocument()
+      expect(screen.getByText('Shoulder Hike / Elevation')).toBeInTheDocument()
+      expect(screen.getByText('Keep your shoulders level')).toBeInTheDocument()
+      expect(screen.getByText(/2 Flagged/i)).toBeInTheDocument()
+    })
+
+    it('4. shows positive alignment state when no compensations flagged during active pose', () => {
+      const cleanSnapshot: SessionSnapshot = {
+        status: 'active',
+        exercise_name: 'Shoulder Abduction',
+        exercise_id: 'shoulder_abduction',
+        side: 'right',
+        selected_side: 'right',
+        camera_orientation: 'front',
+        is_calibrated: true,
+        calibration_status: 'calibrated',
+        calibration_error: null,
+        calibration_samples: 30,
+        calibration_baseline: null,
+        pose_detected: true,
+        current_angle: 45.0,
+        joint_angle: 45.0,
+        rep_state: 'rising',
+        rep_phase: 'rising',
+        rep_count: 0,
+        rom_target: 90.0,
+        rom_progress: 0.5,
+        active_compensation_ids: [],
+        feedback_messages: [],
+        latest_quality: null,
+        last_error: null,
+        frame_index: 20,
+      }
+
+      render(<FeedbackPanel snapshot={cleanSnapshot} />)
+
+      expect(screen.getByText(/Optimal form maintained/i)).toBeInTheDocument()
+    })
+  })
+
+  describe('QualitySummary Component', () => {
+    it('5. shows awaiting state when no completed rep exists', () => {
+      render(<QualitySummary quality={null} />)
+      expect(screen.getByText(/Awaiting Repetition/i)).toBeInTheDocument()
+      expect(screen.getByText(/Complete at least one full repetition/i)).toBeInTheDocument()
+    })
+
+    it('6. displays component sub-scores when quality data provided', () => {
+      const quality = {
+        overall_score: 87.5,
+        rom_score: 90.0,
+        alignment_score: 85.0,
+        stability_score: 88.0,
+        compensation_score: 85.0,
+      }
+
+      render(<QualitySummary quality={quality} repNumber={2} />)
+
+      expect(screen.getByText('87.5')).toBeInTheDocument()
+      expect(screen.getByText('Repetition #2')).toBeInTheDocument()
+      expect(screen.getByText('ROM Accuracy')).toBeInTheDocument()
+      expect(screen.getByText('Postural Alignment')).toBeInTheDocument()
+      expect(screen.getByText('Path Stability')).toBeInTheDocument()
+      expect(screen.getByText('Compensation Index')).toBeInTheDocument()
+    })
+  })
+
+  describe('VideoFeed Component', () => {
+    it('7. displays standby placeholder when session is idle', () => {
+      render(<VideoFeed sessionStatus="idle" snapshot={null} />)
+      expect(screen.getByText(/STREAM STANDBY/i)).toBeInTheDocument()
+      expect(screen.getByText(/Webcam Stream Idle/i)).toBeInTheDocument()
+    })
+
+    it('8. renders image element pointing to stream URL when active', () => {
+      render(
+        <VideoFeed
+          sessionStatus="active"
+          snapshot={{
+            status: 'active',
+            exercise_name: 'Sit to Stand',
+            exercise_id: 'sit_to_stand',
+            side: 'right',
+            selected_side: 'right',
+            camera_orientation: 'side',
+            is_calibrated: true,
+            calibration_status: 'calibrated',
+            calibration_error: null,
+            calibration_samples: 30,
+            calibration_baseline: null,
+            pose_detected: true,
+            current_angle: 90.0,
+            joint_angle: 90.0,
+            rep_state: 'up',
+            rep_phase: 'up',
+            rep_count: 1,
+            rom_target: 95.0,
+            rom_progress: 0.95,
+            active_compensation_ids: [],
+            feedback_messages: [],
+            latest_quality: null,
+            last_error: null,
+            frame_index: 60,
+          }}
+        />
+      )
+
+      expect(screen.getByText(/LIVE FEED/i)).toBeInTheDocument()
+      expect(screen.getByText(/Pose Detected/i)).toBeInTheDocument()
+      const img = screen.getByRole('img')
+      expect(img).toHaveAttribute('src', expect.stringContaining('/api/video/stream'))
+    })
+  })
+
+  describe('SessionSetup Component', () => {
+    it('9. disables inputs and shows progress indicator while session is active', () => {
+      render(
+        <SessionSetup
+          exercises={[
+            {
+              id: 'shoulder_abduction',
+              name: 'Shoulder Abduction',
+              target_joint: 'shoulder',
+              camera_orientation: 'front',
+              rom_target: 90.0,
+            },
+          ]}
+          selectedExerciseId="shoulder_abduction"
+          selectedSide="right"
+          cameraIndex={0}
+          sessionStatus="active"
+          isLoading={false}
+          error={null}
+          onSelectExercise={vi.fn()}
+          onSelectSide={vi.fn()}
+          onChangeCameraIndex={vi.fn()}
+          onStart={vi.fn()}
+          onStop={vi.fn()}
+          onCalibrate={vi.fn()}
+        />
+      )
+
+      expect(screen.getByRole('button', { name: /Stop Exercise Session/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Calibrate/i })).toBeInTheDocument()
+      expect(screen.getByLabelText(/Exercise Protocol/i)).toBeDisabled()
+    })
+  })
+})

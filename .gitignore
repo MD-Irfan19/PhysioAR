@@ -6,3 +6,5 @@ __pycache__/
 /Implementation_Plan.md
 /Literature Survey
 /data
+frontend/node_modules/
+frontend/dist/
