@@ -202,47 +202,62 @@ export const App: React.FC = () => {
         />
 
         {/* Main Workspace Container */}
-        <main className="flex-1 p-4 md:p-6 max-w-7xl w-full mx-auto space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column: Setup & Quality (4 cols) */}
-          <div className="lg:col-span-4 space-y-6 order-2 lg:order-1">
-            <SessionSetup
-              exercises={exercises}
-              selectedExerciseId={selectedExerciseId}
-              selectedSide={selectedSide}
-              cameraIndex={cameraIndex}
-              sessionStatus={sessionStatus}
-              isLoading={isLoading}
-              error={actionError || wsError}
-              activeExerciseId={snapshot?.exercise_id}
-              activeSide={snapshot?.side as ('left' | 'right' | null | undefined)}
-              onSelectExercise={setSelectedExerciseId}
-              onSelectSide={setSelectedSide}
-              onChangeCameraIndex={setCameraIndex}
-              onStart={handleStartSession}
-              onStop={handleStopSession}
-              onCalibrate={handleCalibrate}
-            />
+        <main className="flex-1 p-3 sm:p-4 lg:p-5 max-w-[1600px] w-full mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 items-start">
+            {/* Primary Monitoring Area (Camera Feed, Telemetry Metrics, Session Controls) */}
+            <div className="contents lg:flex lg:flex-col lg:col-span-7 xl:col-span-8 lg:space-y-4 min-w-0">
+              {/* Camera Feed: Mobile 1st, Desktop Left Top */}
+              <div className="order-1 w-full min-w-0">
+                <VideoFeed
+                  sessionStatus={sessionStatus}
+                  snapshot={snapshot}
+                />
+              </div>
 
-            <QualitySummary
-              quality={snapshot?.latest_quality ?? null}
-              repNumber={snapshot?.rep_count}
-            />
+              {/* Telemetry Metric Cards: Mobile 3rd, Desktop Left Below Video */}
+              <div className="order-3 lg:order-2 w-full min-w-0">
+                <MetricCards snapshot={snapshot} />
+              </div>
+
+              {/* Session Controls & Protocol Setup: Mobile 4th, Desktop Left Lower */}
+              <div className="order-4 lg:order-3 w-full min-w-0">
+                <SessionSetup
+                  exercises={exercises}
+                  selectedExerciseId={selectedExerciseId}
+                  selectedSide={selectedSide}
+                  cameraIndex={cameraIndex}
+                  sessionStatus={sessionStatus}
+                  isLoading={isLoading}
+                  error={actionError || wsError}
+                  activeExerciseId={snapshot?.exercise_id}
+                  activeSide={snapshot?.side as ('left' | 'right' | null | undefined)}
+                  onSelectExercise={setSelectedExerciseId}
+                  onSelectSide={setSelectedSide}
+                  onChangeCameraIndex={setCameraIndex}
+                  onStart={handleStartSession}
+                  onStop={handleStopSession}
+                  onCalibrate={handleCalibrate}
+                />
+              </div>
+            </div>
+
+            {/* Dedicated Right-Hand Sidebar (Persistent Corrective Feedback & Repetition Quality) */}
+            <div className="contents lg:flex lg:flex-col lg:col-span-5 xl:col-span-4 lg:space-y-4 min-w-0">
+              {/* Real-Time Corrective Feedback: Mobile 2nd (immediately below camera), Desktop Right Top */}
+              <div className="order-2 lg:order-1 w-full min-w-0">
+                <FeedbackPanel snapshot={snapshot} />
+              </div>
+
+              {/* Repetition Quality Summary: Mobile 5th, Desktop Right Lower */}
+              <div className="order-5 lg:order-2 w-full min-w-0">
+                <QualitySummary
+                  quality={snapshot?.latest_quality ?? null}
+                  repNumber={snapshot?.rep_count}
+                />
+              </div>
+            </div>
           </div>
-
-          {/* Right Column: Live Feed, Metrics & Feedback (8 cols) */}
-          <div className="lg:col-span-8 space-y-6 order-1 lg:order-2">
-            <VideoFeed
-              sessionStatus={sessionStatus}
-              snapshot={snapshot}
-            />
-
-            <MetricCards snapshot={snapshot} />
-
-            <FeedbackPanel snapshot={snapshot} />
-          </div>
-        </div>
-      </main>
+        </main>
 
       {/* Restrained Footer */}
       <footer className="border-t border-border bg-panel/60 py-4 px-6 text-center text-xs text-foreground-subtle">

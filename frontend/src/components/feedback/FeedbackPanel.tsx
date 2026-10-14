@@ -37,7 +37,7 @@ export const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ snapshot }) => {
   const calibrationError = snapshot?.calibration_error
 
   return (
-    <div className="rounded-xl border border-border bg-panel p-5 shadow-sm space-y-4">
+    <div className="rounded-xl border border-border bg-panel p-4 sm:p-5 shadow-sm space-y-3.5 sm:space-y-4 w-full min-w-0">
       <div className="flex items-center justify-between border-b border-border pb-3">
         <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-amber-400" />

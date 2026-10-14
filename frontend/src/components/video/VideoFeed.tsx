@@ -87,21 +87,21 @@ export const VideoFeed: React.FC<VideoFeedProps> = ({ sessionStatus, snapshot })
         )}
 
       {/* Main Video Viewport */}
-      <div className="relative aspect-video w-full flex items-center justify-center bg-[#070A0F]">
+      <div className="relative aspect-video w-full max-h-[44vh] lg:max-h-[48vh] xl:max-h-[52vh] max-h-[460px] min-h-[220px] flex items-center justify-center bg-[#070A0F] overflow-hidden">
         {isRunning && videoUrl && !streamError ? (
           <img
             src={videoUrl}
             alt="PhysioAR Annotated Biomechanics Video Stream"
             onError={() => setStreamError(true)}
-            className="h-full w-full object-contain"
+            className="h-full w-full object-contain pointer-events-none select-none"
           />
         ) : (
-          <div className="flex flex-col items-center justify-center p-8 text-center text-foreground-muted space-y-3">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-panel text-foreground-subtle border border-border">
+          <div className="flex flex-col items-center justify-center p-4 sm:p-6 text-center text-foreground-muted space-y-2.5">
+            <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-panel text-foreground-subtle border border-border">
               {streamError ? (
-                <AlertCircle className="h-8 w-8 text-status-error" />
+                <AlertCircle className="h-6 w-6 sm:h-7 sm:w-7 text-status-error" />
               ) : (
-                <VideoOff className="h-8 w-8 text-foreground-subtle" />
+                <VideoOff className="h-6 w-6 sm:h-7 sm:w-7 text-foreground-subtle" />
               )}
             </div>
             <div>
@@ -110,10 +110,10 @@ export const VideoFeed: React.FC<VideoFeedProps> = ({ sessionStatus, snapshot })
                   ? 'Video Stream Interrupted'
                   : 'Webcam Stream Idle'}
               </p>
-              <p className="text-xs text-foreground-subtle max-w-sm mt-1">
+              <p className="text-xs text-foreground-subtle max-w-sm mt-0.5">
                 {streamError
                   ? 'Unable to display camera stream. Ensure the camera is connected and backend is active.'
-                  : 'Select an exercise protocol on the left and click "Start Session" to open the video feed.'}
+                  : 'Select an exercise protocol and click "Start Session" to open the video feed.'}
               </p>
             </div>
             {streamError && (

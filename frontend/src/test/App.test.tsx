@@ -228,4 +228,78 @@ describe('PhysioAR App Component', () => {
       })
     })
   })
+
+  describe('Phase 1: Viewport-Constrained Layout Foundation', () => {
+    it('7. places FeedbackPanel in dedicated sidebar rather than inside main monitoring column', async () => {
+      const { container } = render(<App />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/Real-Time Corrective Feedback/i)).toBeInTheDocument()
+      })
+
+      // Verify the 12-column grid exists
+      const grid = container.querySelector('.lg\\:grid-cols-12')
+      expect(grid).toBeInTheDocument()
+
+      // Verify main monitoring column and sidebar column exist
+      const mainCol = container.querySelector('.lg\\:col-span-7')
+      const sidebarCol = container.querySelector('.lg\\:col-span-5')
+      expect(mainCol).toBeInTheDocument()
+      expect(sidebarCol).toBeInTheDocument()
+
+      // Verify FeedbackPanel is inside the sidebar column, NOT the main monitoring column
+      expect(sidebarCol).toHaveTextContent(/Real-Time Corrective Feedback/i)
+      expect(sidebarCol).toHaveTextContent(/Completed Repetition Quality/i)
+      expect(mainCol).not.toHaveTextContent(/Real-Time Corrective Feedback/i)
+
+      // Verify VideoFeed, MetricCards, and SessionSetup are in the main column
+      expect(mainCol).toHaveTextContent(/Webcam Stream Idle/i)
+      expect(mainCol).toHaveTextContent(/Joint Angle/i)
+      expect(mainCol).toHaveTextContent(/Session Setup & Controls/i)
+    })
+
+    it('8. renders cleanly across idle, calibrating, active, and error states without crashes', async () => {
+      const states: Array<'idle' | 'calibrating' | 'active' | 'error'> = [
+        'idle',
+        'calibrating',
+        'active',
+        'error',
+      ]
+
+      for (const st of states) {
+        mockWSState.snapshot = {
+          status: st,
+          exercise_name: 'Shoulder Abduction',
+          exercise_id: 'shoulder_abduction',
+          side: 'right',
+          selected_side: 'right',
+          camera_orientation: 'front',
+          is_calibrated: st === 'active',
+          calibration_status: st === 'calibrating' ? 'calibrating' : st === 'active' ? 'calibrated' : 'not_calibrated',
+          calibration_error: st === 'error' ? 'Calibration timeout' : null,
+          calibration_samples: st === 'active' ? 30 : 0,
+          calibration_baseline: null,
+          pose_detected: true,
+          current_angle: 45.0,
+          joint_angle: 45.0,
+          rep_state: 'rising',
+          rep_phase: 'rising',
+          rep_count: 1,
+          rom_target: 90.0,
+          rom_progress: 0.5,
+          active_compensation_ids: st === 'active' ? ['torso_lean'] : [],
+          feedback_messages: st === 'active' ? ['Keep torso upright'] : [],
+          latest_quality: null,
+          last_error: null,
+          frame_index: 20,
+        }
+
+        const { unmount } = render(<App />)
+        expect(screen.getByText(/Real-Time Corrective Feedback/i)).toBeInTheDocument()
+        expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/Physio/i)
+        unmount()
+      }
+    })
+  })
 })
+
