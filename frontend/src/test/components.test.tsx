@@ -80,6 +80,120 @@ describe('PhysioAR UI Components', () => {
       expect(screen.getByText('92%')).toBeInTheDocument()
       expect(screen.getByText('Baseline Active')).toBeInTheDocument()
     })
+
+    it('2b. safely handles NaN, non-finite numbers, and negative counts without crashing', () => {
+      const corruptSnapshot: SessionSnapshot = {
+        status: 'active',
+        exercise_name: 'Shoulder Abduction',
+        exercise_id: 'shoulder_abduction',
+        side: 'right',
+        selected_side: 'right',
+        camera_orientation: 'front',
+        is_calibrated: false,
+        calibration_status: 'calibrating',
+        calibration_error: null,
+        calibration_samples: NaN,
+        calibration_baseline: null,
+        pose_detected: true,
+        current_angle: NaN,
+        joint_angle: Infinity as any,
+        rep_state: 'rising',
+        rep_phase: 'rising',
+        rep_count: -5,
+        rom_target: NaN,
+        rom_progress: NaN,
+        active_compensation_ids: [],
+        feedback_messages: [],
+        latest_quality: null,
+        last_error: null,
+        frame_index: 10,
+      }
+
+      render(<MetricCards snapshot={corruptSnapshot} />)
+
+      // NaN angles and progress should render graceful dashes
+      const dashes = screen.getAllByText('—')
+      expect(dashes.length).toBeGreaterThanOrEqual(2)
+      // Negative rep count is normalized safely to 0
+      expect(screen.getByText('0')).toBeInTheDocument()
+      // Calibrating status remains clearly indicated
+      expect(screen.getByText('Collecting...')).toBeInTheDocument()
+    })
+
+    it('2c. displays large repetition counts and formatted states cleanly', () => {
+      const highRepSnapshot: SessionSnapshot = {
+        status: 'active',
+        exercise_name: 'Sit to Stand',
+        exercise_id: 'sit_to_stand',
+        side: 'left',
+        selected_side: 'left',
+        camera_orientation: 'side',
+        is_calibrated: true,
+        calibration_status: 'calibrated',
+        calibration_error: null,
+        calibration_samples: 30,
+        calibration_baseline: null,
+        pose_detected: true,
+        current_angle: 110.5,
+        joint_angle: 110.5,
+        rep_state: 'extended_hold_motion',
+        rep_phase: 'extended_hold_motion',
+        rep_count: 1250,
+        rom_target: 95.0,
+        rom_progress: 1.15,
+        active_compensation_ids: [],
+        feedback_messages: [],
+        latest_quality: null,
+        last_error: null,
+        frame_index: 5000,
+      }
+
+      render(<MetricCards snapshot={highRepSnapshot} />)
+
+      expect(screen.getByText('1250')).toBeInTheDocument()
+      expect(screen.getByText('110.5')).toBeInTheDocument()
+      expect(screen.getByText('Target: 95°')).toBeInTheDocument()
+      // ROM progress clamped to 100%
+      expect(screen.getByText('100%')).toBeInTheDocument()
+      expect(screen.getByText(/State: extended hold motion/i)).toBeInTheDocument()
+    })
+
+    it('2d. renders telemetry strip with accessible roles and failure details', () => {
+      const failedSnapshot: SessionSnapshot = {
+        status: 'error',
+        exercise_name: 'Shoulder Abduction',
+        exercise_id: 'shoulder_abduction',
+        side: 'right',
+        selected_side: 'right',
+        camera_orientation: 'front',
+        is_calibrated: false,
+        calibration_status: 'failed',
+        calibration_error: 'Patient not centered in frame',
+        calibration_samples: 5,
+        calibration_baseline: null,
+        pose_detected: false,
+        current_angle: null,
+        joint_angle: null,
+        rep_state: null,
+        rep_phase: null,
+        rep_count: 0,
+        rom_target: 90.0,
+        rom_progress: 0.45,
+        active_compensation_ids: [],
+        feedback_messages: [],
+        latest_quality: null,
+        last_error: null,
+        frame_index: 45,
+      }
+
+      render(<MetricCards snapshot={failedSnapshot} />)
+
+      // Telemetry strip role & testid
+      expect(screen.getByTestId('telemetry-strip')).toBeInTheDocument()
+      expect(screen.getByRole('progressbar', { name: /ROM Completion Percentage/i })).toBeInTheDocument()
+      expect(screen.getByText('Calibration Failed')).toBeInTheDocument()
+      expect(screen.getByText('Patient not centered in frame')).toBeInTheDocument()
+    })
   })
 
   describe('FeedbackPanel Component', () => {
