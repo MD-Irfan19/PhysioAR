@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { MetricCards } from '@/components/metrics/MetricCards'
 import { FeedbackPanel } from '@/components/feedback/FeedbackPanel'
@@ -598,6 +598,151 @@ describe('PhysioAR UI Components', () => {
       expect(screen.getByRole('button', { name: /Stop Exercise Session/i })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /Calibrate/i })).toBeInTheDocument()
       expect(screen.getByLabelText(/Exercise Protocol/i)).toBeDisabled()
+    })
+
+    it('9b. renders full setup controls in idle mode with complete guidance and start button', () => {
+      render(
+        <SessionSetup
+          exercises={[
+            {
+              id: 'sit_to_stand',
+              name: 'Sit to Stand',
+              target_joint: 'hip/knee',
+              camera_orientation: 'side',
+              rom_target: 95.0,
+            },
+          ]}
+          selectedExerciseId="sit_to_stand"
+          selectedSide="left"
+          cameraIndex={0}
+          sessionStatus="idle"
+          isLoading={false}
+          error={null}
+          onSelectExercise={vi.fn()}
+          onSelectSide={vi.fn()}
+          onChangeCameraIndex={vi.fn()}
+          onStart={vi.fn()}
+          onStop={vi.fn()}
+          onCalibrate={vi.fn()}
+        />
+      )
+
+      expect(screen.getByTestId('session-setup-card')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Start Session/i })).toBeInTheDocument()
+      expect(screen.getByLabelText(/Exercise Protocol/i)).not.toBeDisabled()
+      expect(screen.getByRole('button', { name: /Left Side/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Right Side/i })).toBeInTheDocument()
+      expect(screen.getByLabelText(/Camera Index/i)).toBeInTheDocument()
+      expect(screen.getByText(/Biomechanics Guidance/i)).toBeInTheDocument()
+      expect(screen.getByText('Ready')).toBeInTheDocument()
+    })
+
+    it('9c. renders compact active toolbar with active exercise name, side badge, and Stop/Calibrate actions', () => {
+      render(
+        <SessionSetup
+          exercises={[
+            {
+              id: 'shoulder_abduction',
+              name: 'Shoulder Abduction',
+              target_joint: 'shoulder',
+              camera_orientation: 'front',
+              rom_target: 90.0,
+            },
+          ]}
+          selectedExerciseId="shoulder_abduction"
+          selectedSide="right"
+          cameraIndex={0}
+          sessionStatus="active"
+          isLoading={false}
+          error={null}
+          activeExerciseId="shoulder_abduction"
+          activeSide="right"
+          onSelectExercise={vi.fn()}
+          onSelectSide={vi.fn()}
+          onChangeCameraIndex={vi.fn()}
+          onStart={vi.fn()}
+          onStop={vi.fn()}
+          onCalibrate={vi.fn()}
+        />
+      )
+
+      expect(screen.getByTestId('active-session-toolbar')).toBeInTheDocument()
+      expect(screen.getByText(/Protocol: Shoulder Abduction/i)).toBeInTheDocument()
+      expect(screen.getByText(/right Side/i)).toBeInTheDocument()
+      expect(screen.getByText('Live Tracking')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Stop Exercise Session/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Calibrate/i })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /^Start Session$/i })).not.toBeInTheDocument()
+    })
+
+    it('9d. offers Retry Calibration when session encounters calibration error', () => {
+      render(
+        <SessionSetup
+          exercises={[
+            {
+              id: 'shoulder_abduction',
+              name: 'Shoulder Abduction',
+              target_joint: 'shoulder',
+              camera_orientation: 'front',
+              rom_target: 90.0,
+            },
+          ]}
+          selectedExerciseId="shoulder_abduction"
+          selectedSide="right"
+          cameraIndex={0}
+          sessionStatus="error"
+          isLoading={false}
+          error="Insufficient calibration frames"
+          onSelectExercise={vi.fn()}
+          onSelectSide={vi.fn()}
+          onChangeCameraIndex={vi.fn()}
+          onStart={vi.fn()}
+          onStop={vi.fn()}
+          onCalibrate={vi.fn()}
+        />
+      )
+
+      expect(screen.getByRole('button', { name: /Retry Calibration/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Stop Exercise Session/i })).toBeInTheDocument()
+      expect(screen.getByText('Attention Required')).toBeInTheDocument()
+      expect(screen.getByText(/Insufficient calibration frames/i)).toBeInTheDocument()
+    })
+
+    it('9e. calls onCalibrate and onStop callbacks when clicked in active mode', () => {
+      const onCalibrate = vi.fn()
+      const onStop = vi.fn()
+
+      render(
+        <SessionSetup
+          exercises={[
+            {
+              id: 'shoulder_abduction',
+              name: 'Shoulder Abduction',
+              target_joint: 'shoulder',
+              camera_orientation: 'front',
+              rom_target: 90.0,
+            },
+          ]}
+          selectedExerciseId="shoulder_abduction"
+          selectedSide="right"
+          cameraIndex={0}
+          sessionStatus="active"
+          isLoading={false}
+          error={null}
+          onSelectExercise={vi.fn()}
+          onSelectSide={vi.fn()}
+          onChangeCameraIndex={vi.fn()}
+          onStart={vi.fn()}
+          onStop={onStop}
+          onCalibrate={onCalibrate}
+        />
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: /Calibrate/i }))
+      expect(onCalibrate).toHaveBeenCalledTimes(1)
+
+      fireEvent.click(screen.getByRole('button', { name: /Stop Exercise Session/i }))
+      expect(onStop).toHaveBeenCalledTimes(1)
     })
   })
 })
