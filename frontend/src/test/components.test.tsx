@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { MetricCards } from '@/components/metrics/MetricCards'
 import { FeedbackPanel } from '@/components/feedback/FeedbackPanel'
@@ -264,6 +264,232 @@ describe('PhysioAR UI Components', () => {
       render(<FeedbackPanel snapshot={cleanSnapshot} />)
 
       expect(screen.getByText(/Optimal form maintained/i)).toBeInTheDocument()
+    })
+
+    it('4b. preserves all known compensation ID mappings and qualified proxy labels', () => {
+      const allCompSnapshot: SessionSnapshot = {
+        status: 'active',
+        exercise_name: 'Sit to Stand',
+        exercise_id: 'sit_to_stand',
+        side: 'right',
+        selected_side: 'right',
+        camera_orientation: 'side',
+        is_calibrated: true,
+        calibration_status: 'calibrated',
+        calibration_error: null,
+        calibration_samples: 30,
+        calibration_baseline: null,
+        pose_detected: true,
+        current_angle: 90.0,
+        joint_angle: 90.0,
+        rep_state: 'rising',
+        rep_phase: 'rising',
+        rep_count: 1,
+        rom_target: 95.0,
+        rom_progress: 0.9,
+        active_compensation_ids: [
+          'torso_lean',
+          'shoulder_hike',
+          'neck_tilt',
+          'hip_rotation',
+          'lateral_trunk_lean',
+          'hip_hike',
+          'shoulder_substitution',
+          'insufficient_forward_trunk_lean',
+          'hand_assisted_rising',
+          'asymmetric_weight_shift',
+        ],
+        feedback_messages: ['Lean trunk forward'],
+        latest_quality: null,
+        last_error: null,
+        frame_index: 100,
+      }
+
+      render(<FeedbackPanel snapshot={allCompSnapshot} />)
+
+      // Verified exact mapping labels
+      expect(screen.getByText('Torso Lateral Lean')).toBeInTheDocument()
+      expect(screen.getByText('Shoulder Hike / Elevation')).toBeInTheDocument()
+      expect(screen.getByText('Cervical Spine Tilt')).toBeInTheDocument()
+      expect(screen.getByText('Pelvic / Hip Rotation')).toBeInTheDocument()
+      expect(screen.getByText('Trunk Lateral Deviation')).toBeInTheDocument()
+      expect(screen.getByText('Pelvic Hike')).toBeInTheDocument()
+      expect(screen.getByText('Shoulder Substitution')).toBeInTheDocument()
+      expect(screen.getByText('Insufficient Forward Trunk Inclination')).toBeInTheDocument()
+      // Crucial proxy qualifications
+      expect(screen.getByText('Hand-Assisted Rising Proxy')).toBeInTheDocument()
+      expect(screen.getByText('Asymmetric Weight Shift Proxy')).toBeInTheDocument()
+      expect(screen.getByText(/10 Flagged/i)).toBeInTheDocument()
+    })
+
+    it('4c. renders unknown compensation identifiers safely with readable fallback', () => {
+      const unknownSnapshot: SessionSnapshot = {
+        status: 'active',
+        exercise_name: 'Custom Exercise',
+        exercise_id: 'custom_ex',
+        side: 'right',
+        selected_side: 'right',
+        camera_orientation: 'front',
+        is_calibrated: true,
+        calibration_status: 'calibrated',
+        calibration_error: null,
+        calibration_samples: 30,
+        calibration_baseline: null,
+        pose_detected: true,
+        current_angle: 50.0,
+        joint_angle: 50.0,
+        rep_state: 'rising',
+        rep_phase: 'rising',
+        rep_count: 0,
+        rom_target: 90.0,
+        rom_progress: 0.5,
+        active_compensation_ids: ['excessive_lumbar_lordosis'],
+        feedback_messages: [],
+        latest_quality: null,
+        last_error: null,
+        frame_index: 25,
+      }
+
+      render(<FeedbackPanel snapshot={unknownSnapshot} />)
+
+      expect(screen.getByText('Excessive Lumbar Lordosis')).toBeInTheDocument()
+    })
+
+    it('4d. prioritizes active compensations before disclaimer and retains clinical disclaimer', () => {
+      const activeSnapshot: SessionSnapshot = {
+        status: 'active',
+        exercise_name: 'Shoulder Abduction',
+        exercise_id: 'shoulder_abduction',
+        side: 'right',
+        selected_side: 'right',
+        camera_orientation: 'front',
+        is_calibrated: true,
+        calibration_status: 'calibrated',
+        calibration_error: null,
+        calibration_samples: 30,
+        calibration_baseline: null,
+        pose_detected: true,
+        current_angle: 60.0,
+        joint_angle: 60.0,
+        rep_state: 'rising',
+        rep_phase: 'rising',
+        rep_count: 1,
+        rom_target: 90.0,
+        rom_progress: 0.66,
+        active_compensation_ids: ['shoulder_hike'],
+        feedback_messages: ['Lower your shoulder during abduction'],
+        latest_quality: null,
+        last_error: null,
+        frame_index: 80,
+      }
+
+      const { container } = render(<FeedbackPanel snapshot={activeSnapshot} />)
+
+      // Both compensation and disclaimer are present
+      expect(screen.getByText('Shoulder Hike / Elevation')).toBeInTheDocument()
+      expect(screen.getByText('Clinical Disclaimer')).toBeInTheDocument()
+      expect(screen.getByText(/PhysioAR is an engineering guidance tool/i)).toBeInTheDocument()
+
+      // Verify DOM ordering: Flagged compensation appears before disclaimer
+      const panelText = container.textContent || ''
+      const compPos = panelText.indexOf('Shoulder Hike / Elevation')
+      const cuePos = panelText.indexOf('Lower your shoulder during abduction')
+      const disclaimerPos = panelText.indexOf('Clinical Disclaimer')
+
+      expect(compPos).toBeGreaterThan(-1)
+      expect(cuePos).toBeGreaterThan(compPos)
+      expect(disclaimerPos).toBeGreaterThan(cuePos)
+    })
+
+    it('4e. does NOT show misleading success state when pose is not detected', () => {
+      const noPoseSnapshot: SessionSnapshot = {
+        status: 'active',
+        exercise_name: 'Shoulder Abduction',
+        exercise_id: 'shoulder_abduction',
+        side: 'right',
+        selected_side: 'right',
+        camera_orientation: 'front',
+        is_calibrated: true,
+        calibration_status: 'calibrated',
+        calibration_error: null,
+        calibration_samples: 30,
+        calibration_baseline: null,
+        pose_detected: false, // Pose lost!
+        current_angle: null,
+        joint_angle: null,
+        rep_state: null,
+        rep_phase: null,
+        rep_count: 0,
+        rom_target: 90.0,
+        rom_progress: null,
+        active_compensation_ids: [], // Empty, but pose is missing!
+        feedback_messages: [],
+        latest_quality: null,
+        last_error: null,
+        frame_index: 40,
+      }
+
+      render(<FeedbackPanel snapshot={noPoseSnapshot} />)
+
+      // Must show Subject Not Detected
+      expect(screen.getByText('Subject Not Detected')).toBeInTheDocument()
+      expect(screen.getByText('No Pose')).toBeInTheDocument()
+      // MUST NOT show optimal form maintained!
+      expect(screen.queryByText(/Optimal form maintained/i)).not.toBeInTheDocument()
+    })
+
+    it('4f. cleanly renders idle and calibrating session states', () => {
+      // 1. Idle state
+      const { unmount } = render(<FeedbackPanel snapshot={null} />)
+      expect(screen.getByText('Session Standby')).toBeInTheDocument()
+      expect(screen.getByText('Standby')).toBeInTheDocument()
+      unmount()
+
+      // 2. Calibrating state
+      const calibSnapshot: SessionSnapshot = {
+        status: 'calibrating',
+        exercise_name: 'Shoulder Abduction',
+        exercise_id: 'shoulder_abduction',
+        side: 'right',
+        selected_side: 'right',
+        camera_orientation: 'front',
+        is_calibrated: false,
+        calibration_status: 'calibrating',
+        calibration_error: null,
+        calibration_samples: 10,
+        calibration_baseline: null,
+        pose_detected: true,
+        current_angle: null,
+        joint_angle: null,
+        rep_state: null,
+        rep_phase: null,
+        rep_count: 0,
+        rom_target: 90.0,
+        rom_progress: null,
+        active_compensation_ids: [],
+        feedback_messages: [],
+        latest_quality: null,
+        last_error: null,
+        frame_index: 10,
+      }
+
+      render(<FeedbackPanel snapshot={calibSnapshot} />)
+      expect(screen.getByText('Neutral Baseline Calibration')).toBeInTheDocument()
+      expect(screen.getByText('Calibrating')).toBeInTheDocument()
+    })
+
+    it('4g. handles null, malformed, or missing optional fields without crashing', () => {
+      const malformedSnapshot: any = {
+        status: 'active',
+        pose_detected: true,
+        active_compensation_ids: null, // intentionally corrupt nulls
+        feedback_messages: null,
+        calibration_error: null,
+      }
+
+      expect(() => {
+        render(<FeedbackPanel snapshot={malformedSnapshot} />)
+      }).not.toThrow()
     })
   })
 
