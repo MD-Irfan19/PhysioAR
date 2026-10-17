@@ -242,7 +242,7 @@ Raw landmark coordinates can fluctuate between consecutive frames. PhysioAR appl
 
 The general EMA update formula is:
 
-**S<sub>t</sub> = αX<sub>t</sub> + (1 - α)S<sub>t-1</sub>**
+<p align='center'> **S<sub>t</sub> = αX<sub>t</sub> + (1 - α)S<sub>t-1</sub>** </p>
 
 > **Audit Note:** Coordinate components x, y, and z are smoothed while visibility values remain raw.
 
