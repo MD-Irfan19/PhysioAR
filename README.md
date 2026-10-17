@@ -574,6 +574,7 @@ PhysioAR/
 │       └── types/
 │           └── index.ts
 ├── requirements.txt
+├── requirements-dev.txt
 └── README.md
 ```
 
@@ -670,11 +671,10 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Important dependency note: The audited `requirements.txt` contains the core computer-vision and testing packages, but does not include every web API dependency. Install the additional API packages explicitly:
+To install development and testing dependencies (such as `pytest` and `httpx`):
 ```bash
-pip install fastapi uvicorn pydantic websockets anyio
+pip install -r requirements-dev.txt
 ```
-For reproducible fresh installations, these API dependencies should be added to the project's dependency manifest.
 
 #### 4. Install frontend dependencies
 Open another terminal and navigate to the frontend directory:
@@ -1167,7 +1167,6 @@ Confirm that:
 Try running:
 ```bash
 python -m pip install -r requirements.txt
-pip install fastapi uvicorn pydantic websockets anyio
 uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
