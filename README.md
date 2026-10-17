@@ -269,7 +269,7 @@ Calibration establishes a reference posture for the current session.
   * Landmark visibility threshold of **0.5**.
   * **Calibration duration:** Web calibration endpoint defaults to **3 seconds**, while the standalone/headless calibration workflow specifies a **10-second default**.
 
-> ⚠️ **Warning:** Calibration is session-local. A poor or asymmetrical initial posture can distort subsequent baseline-relative comparisons.
+> **Warning:** Calibration is session-local. A poor or asymmetrical initial posture can distort subsequent baseline-relative comparisons.
 
 #### 6. Posture metric extraction
 Posture calculations are kept separate from compensation decisions. 
@@ -299,13 +299,13 @@ The generic compensation engine compares a current posture metric against the co
 
 The mathematical approach combines an individual's observed baseline variability with a fixed minimum threshold:
 
-\[D = \vert{}x-\mu\vert{}\]
+<p align="center"><b>D = |x - μ|</b></p>
 
-\[T = \max(2\sigma,F)\]
+<p align="center"><b>T = max(2σ, F)</b></p>
 
 A compensation is flagged when:
 
-\[D > T\]
+<p align="center"><b>D &gt; T</b></p>
 
 Generic exercise-specific checks can also be gated by repetition phase (e.g., the sit-to-stand forward-trunk check is evaluated during the rising phase).
 
@@ -390,7 +390,7 @@ The camera-view recommendation matters because the system primarily uses two-dim
 
 The interior angle is transformed into a flexion-oriented measurement using the following formula:
 
-\[\theta_{\text{flexion}}=\max(0^\circ,180^\circ-\theta_{\text{interior}})\]
+<p align="center"><b>θ<sub>flexion</sub> = max(0°, 180° - θ<sub>interior</sub>)</b></p>
 
 #### Sit to Stand
 * **Vector Tracking:** Uses the hip-knee-ankle angle as the primary repetition metric.
@@ -427,54 +427,33 @@ The effective thresholds are not identical across all metrics. Some use baseline
 ##### 1. Range-of-Motion Score
 The score compares the maximum observed angle during a repetition with the exercise's configured ROM target. The audited ROM calculation is:
 
-\[
-Q_{\text{ROM}}=
-\min\left(
-\frac{\max(\theta)}{\theta_{\text{target}}},
-1
-\right)\times100
-\]
+<p align="center"><b>Q<sub>ROM</sub> = min( max(θ) / θ<sub>target</sub> , 1 ) × 100</b></p>
 
 ##### 2. Alignment Score
 Alignment is based on normalized posture deviations, using the configured alignment normalization constant of 15.0 and a shoulder-unit scaling constant of 100.0. The audited general form is:
 
-\[
-Q_{\text{alignment}}=
-\max(0,100-100R_{\text{deviation}})
-\]
+<p align="center"><b>Q<sub>alignment</sub> = max( 0, 100 - 100R<sub>deviation</sub> )</b></p>
 
-where \(R_{\text{deviation}}\) is the average normalized deviation ratio computed by the implementation.
+where R<sub>deviation</sub> is the average normalized deviation ratio computed by the implementation.
 
 ##### 3. Stability Score
 Stability uses joint-angle variability within the repetition. With the configured stability normalization constant of 30°:
 
-\[
-Q_{\text{stability}}=
-\max\left(0,100-\frac{\sigma_\theta}{30}\times100\right)
-\]
+<p align="center"><b>Q<sub>stability</sub> = max( 0, 100 - (σ<sub>θ</sub> / 30) × 100 )</b></p>
 
-where \(\sigma_\theta\) is the standard deviation of the relevant angle samples.
+where σ<sub>θ</sub> is the standard deviation of the relevant angle samples.
 
 ##### 4. Compensation Score
 The compensation score deducts 15 points for each distinct compensation type flagged at least once during a repetition:
 
-\[
-Q_{\text{compensation}}=
-\max(0,100-15N)
-\]
+<p align="center"><b>Q<sub>compensation</sub> = max( 0, 100 - 15N )</b></p>
 
-where \(N\) is the number of distinct compensation types flagged for that repetition.
+where N is the number of distinct compensation types flagged for that repetition.
 
 ##### 5. Overall Quality Index
 The overall score combines the component scores using fixed weights:
 
-\[
-Q_{\text{overall}}=
-0.30Q_{\text{ROM}}
-+0.20Q_{\text{alignment}}
-+0.20Q_{\text{stability}}
-+0.30Q_{\text{compensation}}
-\]
+<p align="center"><b>Q<sub>overall</sub> = 0.30Q<sub>ROM</sub> + 0.20Q<sub>alignment</sub> + 0.20Q<sub>stability</sub> + 0.30Q<sub>compensation</sub></b></p>
 
 The weights prioritize ROM and compensation while retaining alignment and movement stability.
 
