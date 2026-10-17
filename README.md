@@ -235,14 +235,14 @@ Raw landmark coordinates can fluctuate between consecutive frames. PhysioAR appl
 
 * **Implementation file:** `src/utils/smoothing.py`
 * **Variables:** 
-  * \(X_t\) is the current coordinate.
-  * \(S_{t-1}\) is the previous smoothed coordinate.
-  * \(S_t\) is the updated smoothed coordinate.
-  * \(\alpha\) controls the balance between responsiveness and smoothing. The configured smoothing factor is \(\alpha = 0.5\).
+  * X<sub>t</sub> is the current coordinate.
+  * S<sub>t-1</sub> is the previous smoothed coordinate.
+  * S<sub>t</sub> is the updated smoothed coordinate.
+  * α controls the balance between responsiveness and smoothing. The configured smoothing factor is α = 0.5.
 
 The general EMA update formula is:
 
-\[S_t = \alpha X_t + (1-\alpha)S_{t-1}\]
+**S<sub>t</sub> = αX<sub>t</sub> + (1 - α)S<sub>t-1</sub>**
 
 > **Audit Note:** Coordinate components x, y, and z are smoothed while visibility values remain raw.
 
