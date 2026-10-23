@@ -1,5 +1,5 @@
 <h1 align="center">PhysioAR</h1>
-### AI-Assisted Markerless Physiotherapy Pose Analysis & Movement Quality Assessment
+AI-Assisted Markerless Physiotherapy Pose Analysis & Movement Quality Assessment
 
 PhysioAR is a real-time, computer-vision-based physiotherapy exercise analysis prototype that tracks human body landmarks using a standard RGB webcam, calculates joint angles and posture metrics, detects selected compensatory movements, tracks exercise repetitions, and provides explainable movement feedback.
 
